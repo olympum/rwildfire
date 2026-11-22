@@ -186,6 +186,18 @@ pub fn render(
     height: usize,
     quality: usize,
 ) -> Result<Vec<u8>, String> {
+    render_with_raster(scene, width, height, quality, |_| Ok(()))
+}
+
+/// Render with the same raster made available before shading for parity capture.
+#[doc(hidden)]
+pub fn render_with_raster(
+    scene: &Scene,
+    width: usize,
+    height: usize,
+    quality: usize,
+    capture: impl FnOnce(&[Bin]) -> Result<(), String>,
+) -> Result<Vec<u8>, String> {
     let (count, samples) = dimensions(width, height, quality)?;
     let mut sampler = Sampler::new(scene, width, height);
     let mut raster = vec![Bin::default(); count];
@@ -195,25 +207,51 @@ pub fn render(
             raster[y * width + x].add(scene.palette[sample.palette_index]);
         }
     }
-    let mut pixels = Vec::with_capacity(count * 3);
-    let k2 = pixels_per_unit(scene, width, height).powi(2) / samples as f64;
+    capture(&raster)?;
+    Ok(shade(scene, width, height, quality, &raster))
+}
+
+// Unfiltered opaque-black path of JWildfire's LogScaleCalculator,
+// LogDensityFilter and GammaCorrectionFilter, at the default color settings.
+fn shade(scene: &Scene, width: usize, height: usize, quality: usize, raster: &[Bin]) -> Vec<u8> {
+    const WHITE_LEVEL: f64 = 220.0;
+    const LOW_DENSITY_BRIGHTNESS: f64 = 0.24;
+    let ppu = pixels_per_unit(scene, width, height);
+    let area = (width * height) as f64 / (ppu * ppu);
+    let k1 = 2.0 * scene.brightness;
+    let k2 = 1.0 / (area * quality as f64);
+    let glow = LOW_DENSITY_BRIGHTNESS * k2 * area;
     let gamma = 1.0 / scene.gamma;
+    let threshold = scene.threshold;
+    let threshold_scale = threshold.powf(gamma - 1.0);
+    let mut pixels = Vec::with_capacity(raster.len() * 3);
     for bin in raster {
-        let t = 2.0 * scene.brightness * (1.0 + f64::from(bin.count) * k2).log10();
-        let alpha = if t >= scene.threshold {
-            t.powf(gamma)
+        if bin.count == 0 {
+            pixels.extend([0; 3]);
+            continue;
+        }
+        let count = f64::from(bin.count);
+        let log_scale =
+            (k1 * (1.0 + count * k2).log10() + glow / (count + 1.0)) / (WHITE_LEVEL * count);
+        let intensity = log_scale * count * WHITE_LEVEL;
+        if intensity <= 0.0 {
+            pixels.extend([0; 3]);
+            continue;
+        }
+        let power = intensity.powf(gamma);
+        let alpha = if intensity <= threshold {
+            let fraction = intensity / threshold;
+            (1.0 - fraction) * intensity * threshold_scale + fraction * power
         } else {
-            let fraction = t / scene.threshold;
-            (1.0 - fraction) * t * scene.threshold.powf(gamma - 1.0) + fraction * t.powf(gamma)
+            power
         };
-        let scale = if bin.count == 0 {
-            0.0
-        } else {
-            alpha / f64::from(bin.count) * (256.0 / 255.0) * (256.0 / 200.0)
-        };
-        pixels.extend(bin.rgb.map(|v| (scale * f64::from(v)).round() as u8));
+        let gamma_scale = 256.0 * alpha / intensity;
+        pixels.extend(
+            bin.rgb
+                .map(|sum| (gamma_scale * (log_scale * f64::from(sum)) + 0.5) as u8),
+        );
     }
-    Ok(pixels)
+    pixels
 }
 
 fn dimensions(w: usize, h: usize, q: usize) -> Result<(usize, usize), String> {
