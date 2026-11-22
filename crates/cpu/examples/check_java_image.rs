@@ -30,8 +30,11 @@ fn read_png(path: &Path) -> Result<Image, Box<dyn Error>> {
     Ok(([info.width, info.height], pixels))
 }
 
-fn capture(flame: &Path, work: &Path) -> Result<(), Box<dyn Error>> {
-    let scene = parse(&fs::read_to_string(flame)?)?;
+fn capture(flame: &Path, work: &Path, unfiltered: bool) -> Result<(), Box<dyn Error>> {
+    let mut scene = parse(&fs::read_to_string(flame)?)?;
+    if unfiltered {
+        scene.filter_radius = 0.0;
+    }
     let size = [(scene.width * 2) as u32, (scene.height * 2) as u32];
     let quality = 100;
     let mut raster = BufWriter::new(File::create(work.join("raster.bin"))?);
@@ -61,8 +64,11 @@ fn capture(flame: &Path, work: &Path) -> Result<(), Box<dyn Error>> {
     write_png(&work.join("rust.png"), size, &pixels)
 }
 
-fn compare(work: &Path, mutate: bool) -> Result<bool, Box<dyn Error>> {
-    let (size, reference) = read_png(&work.join("java.png"))?;
+fn compare(work: &Path, mode: &str) -> Result<bool, Box<dyn Error>> {
+    let mutate = mode == "mutate";
+    let omit = mode == "omit";
+    let (size, reference) =
+        read_png(&work.join(if omit { "java-omitted.png" } else { "java.png" }))?;
     let (candidate_size, mut candidate) = read_png(&work.join("rust.png"))?;
     if size != candidate_size
         || reference.len() != candidate.len()
@@ -85,7 +91,9 @@ fn compare(work: &Path, mutate: bool) -> Result<bool, Box<dyn Error>> {
         .filter(|rgb| **rgb != [0; 3])
         .count();
     write_png(
-        &work.join(if mutate {
+        &work.join(if omit {
+            "omitted-diff.png"
+        } else if mutate {
             "mutant-diff.png"
         } else {
             "diff.png"
@@ -95,7 +103,13 @@ fn compare(work: &Path, mutate: bool) -> Result<bool, Box<dyn Error>> {
     )?;
     println!(
         "{}: {} of {} RGB pixels differ ({}×{})",
-        if mutate { "mutant" } else { "rust" },
+        if omit {
+            "omitted filter"
+        } else if mutate {
+            "mutant"
+        } else {
+            "rust"
+        },
         changed,
         reference.len() / 3,
         size[0],
@@ -110,15 +124,15 @@ fn compare(work: &Path, mutate: bool) -> Result<bool, Box<dyn Error>> {
 fn run() -> Result<bool, Box<dyn Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.as_slice() {
-        [mode, flame, work] if mode == "capture" => {
-            capture(Path::new(flame), Path::new(work))?;
+        [mode, flame, work] if mode == "filtered" || mode == "unfiltered" => {
+            capture(Path::new(flame), Path::new(work), mode == "unfiltered")?;
             Ok(true)
         }
-        [mode, work] if mode == "compare" || mode == "mutate" => {
-            compare(Path::new(work), mode == "mutate")
+        [mode, work] if mode == "compare" || mode == "mutate" || mode == "omit" => {
+            compare(Path::new(work), mode.to_str().unwrap())
         }
         _ => Err(
-            "usage: check_java_image capture FLAME WORK_DIR | compare WORK_DIR | mutate WORK_DIR"
+            "usage: check_java_image filtered|unfiltered FLAME WORK_DIR | compare|mutate|omit WORK_DIR"
                 .into(),
         ),
     }
