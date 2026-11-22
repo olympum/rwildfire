@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Adapted from JWildfire 9.20 FastMathLibImpl. See NOTICE.md.
+// Adapted from JWildfire 9.20 FastMathLibImpl (Andreas Maschke, LGPL-2.1-or-later).
+// Jafama algorithm attribution: Copyright 2012–2017 Jeff Hain (Apache-2.0). See NOTICE.md.
 use std::sync::OnceLock;
 
 const SIZE: usize = 4096;

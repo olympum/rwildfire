@@ -7,8 +7,8 @@ The preview reads original flame XML directly. It supports legacy single-layer
 `linear3D`, `spherical3D`, `waves`, `bubble`, and `spiral` variations. The sampler carries Z between
 transforms, but the supported camera still projects only XY. For `waves` and `spiral` trigonometric arguments above
 about 12,739 radians in magnitude, Rust uses its standard trigonometric functions instead of
-Java’s large-angle reduction. Small or zero affine translations can reach
-that range. Mixed transforms with three or more active variations use a fixed Rust
+Java’s large-angle reduction. For `waves`, small or zero affine translations can reach that range; for
+`spiral`, the argument is the length of the affine XY point. Mixed transforms with three or more active variations use a fixed Rust
 accumulation order; parity for those combinations is unverified. The legacy XML `rotate` value is read in degrees, as in JWildfire.
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
