@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 
@@ -20,6 +21,28 @@ def main():
         parser.exit(1, f"check-cpu-scene: {exc}\n")
 
 
+def compare_padded_rasters(reference, candidate):
+    layout = (1014, 668, 100)  # original TINA0010 at 2x, quality 100
+    width, height = layout[0] + 4, layout[1] + 4
+    bins = width * height
+    header = struct.pack(">III", *layout)
+    if any(len(data) != len(header) + 16 * bins or not data.startswith(header)
+           for data in (reference, candidate)):
+        raise oracle.OracleError("invalid TINA0010 padded raster dimensions, quality or length")
+    if candidate != reference:
+        for offset in range(len(header), len(reference), 16):
+            if reference[offset:offset + 16] != candidate[offset:offset + 16]:
+                y, x = divmod((offset - len(header)) // 16, width)
+                java = struct.unpack_from(">Ifff", reference, offset)
+                rust = struct.unpack_from(">Ifff", candidate, offset)
+                raise oracle.OracleError(f"padded raster mismatch at ({x}, {y}): Java {java}; Rust {rust}")
+    hits = sum(count for count, *_ in struct.iter_unpack(">Ifff", memoryview(reference)[12:]))
+    budget = bins * layout[2]
+    if not 0 < hits <= budget:
+        raise oracle.OracleError(f"invalid accumulated hit count: {hits} for {budget} samples")
+    print(f"TINA0010: {bins:,} padded bins match bit-for-bit ({hits:,} hits, {budget:,} sample budget)", flush=True)
+
+
 def capture(source):
     info = oracle.resolve_source(source)
     export = oracle.CACHE / info["export"]
@@ -34,10 +57,11 @@ def capture(source):
     print(f"check-cpu-scene: artifacts={work}", flush=True)
     probe = oracle.ROOT / "oracle/SceneV1Probe.java"
     image_probe = oracle.ROOT / "oracle/ImageV1Probe.java"
+    raster_probe = oracle.ROOT / "oracle/PaddedRasterProbe.java"
     cp = oracle.classpath(export)
     subprocess.run([
         jdk["javac"], "-encoding", "ISO-8859-1", "-proc:none", "-cp", cp,
-        "-sourcepath", str(export / "src"), "-d", str(classes), str(probe), str(image_probe),
+        "-sourcepath", str(export / "src"), "-d", str(classes), str(probe), str(image_probe), str(raster_probe),
     ], cwd=oracle.ROOT, check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
@@ -69,7 +93,8 @@ def capture(source):
                "--example", "check_java_image", "--"]
     java = [jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
             "-cp", runtime_cp, "ImageV1Probe", str(flame)]
-    provenance["image"] = {"scene": "TINA0010", "probe_sha256": oracle.sha256_file(image_probe)}
+    provenance["image"] = {"scene": "TINA0010", "probe_sha256": oracle.sha256_file(image_probe),
+                           "raster_probe_sha256": oracle.sha256_file(raster_probe)}
     for mode in ("unfiltered", "filtered"):
         image = work / mode
         image.mkdir()
@@ -77,6 +102,25 @@ def capture(source):
         subprocess.run([*example, mode, str(flame), str(image)],
                        cwd=oracle.ROOT, check=True, timeout=600)
         raster = str(image / "raster.bin")
+        if mode == "filtered":
+            reference = str(image / "java-raster.bin")
+            subprocess.run([
+                jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
+                "-cp", runtime_cp, "PaddedRasterProbe", str(flame), reference,
+            ], cwd=oracle.ROOT, check=True, timeout=120)
+            java_bins, rust_bins = Path(reference).read_bytes(), Path(raster).read_bytes()
+            compare_padded_rasters(java_bins, rust_bins)
+            mutant_raster = bytearray(rust_bins)
+            mutant_raster[15] ^= 1  # flip the low count bit in the first bin
+            try:
+                compare_padded_rasters(java_bins, mutant_raster)
+            except oracle.OracleError as exc:
+                if not str(exc).startswith("padded raster mismatch at (0, 0):"):
+                    raise
+                print(f"raster negative control rejected: {exc}", flush=True)
+            else:
+                raise oracle.OracleError("one-bin raster mutation was accepted")
+            raster = reference
         subprocess.run([*java, raster, str(image / "java.png"), mode],
                        cwd=oracle.ROOT, check=True, timeout=120)
         subprocess.run([*example, "compare", str(image)], cwd=oracle.ROOT, check=True, timeout=120)
@@ -86,7 +130,7 @@ def capture(source):
             subprocess.run([*java, raster, str(image / "java-omitted.png"), "omit"],
                            cwd=oracle.ROOT, check=True, timeout=120)
             control = "omit"
-            outputs[-1:] = ["java-omitted.png", "omitted-diff.png"]
+            outputs[-1:] = ["java-raster.bin", "java-omitted.png", "omitted-diff.png"]
         mutant = subprocess.run([*example, control, str(image)], cwd=oracle.ROOT, timeout=120)
         if mutant.returncode != 1:
             raise oracle.OracleError(f"image {control} control exited {mutant.returncode}, expected 1")

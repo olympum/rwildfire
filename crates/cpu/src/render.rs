@@ -209,12 +209,12 @@ pub fn render_with_raster(
     quality: usize,
     capture: impl FnOnce(&[Bin]) -> Result<(), String>,
 ) -> Result<Vec<u8>, String> {
-    let samples = sample_budget(width, height, quality)?;
     if scene.filter_radius != 0.0 && scene.filter_radius != 1.0 {
         return Err("only filter radii 0 and 1 are supported".into());
     }
     let filter = Kernel::mitchell_smooth(scene.filter_radius);
     let border = filter.border();
+    let samples = sample_budget(width, height, quality, border)?;
     let stride = width + 2 * border;
     let mut sampler = Sampler::with_border(scene, width, height, border);
     let mut raster = vec![Bin::default(); stride * (height + 2 * border)];
@@ -314,11 +314,11 @@ fn shade(
     pixels
 }
 
-fn sample_budget(w: usize, h: usize, q: usize) -> Result<usize, String> {
+fn sample_budget(w: usize, h: usize, q: usize, border: usize) -> Result<usize, String> {
     if !(1..=4096).contains(&w) || !(1..=4096).contains(&h) || q == 0 {
         return Err("width and height must be 1..=4096; quality must be positive".into());
     }
-    let count = w * h;
+    let count = (w + 2 * border) * (h + 2 * border);
     match count.checked_mul(q) {
         Some(samples) if samples <= 200_000_000 => Ok(samples),
         _ => Err("preview sample budget exceeds 200,000,000".into()),
