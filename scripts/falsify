@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Comparator bypass mutation probe.
+#
+# Copies the Rust workspace to a temporary directory, proves the unmodified
+# copy's tests pass, mutates the comparator's pass decision to always true, and
+# requires the same tests to fail. The shared checkout is never mutated; the
+# temporary copy is restored from a byte backup before it is removed.
+#
+# This is deliberately not part of scripts/check: it builds and tests twice in
+# a throwaway target directory. Run it after changing comparator pass logic and
+# record the result in the pull request.
+set -Eeuo pipefail
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ART_ROOT="$ROOT/artifacts"
+TARGET_REL="crates/parity/src/lib.rs"
+ORIGINAL_LINE='    let passed = mismatched_components == 0;'
+MUTANT_LINE='    let passed = true;'
+
+fail() {
+    printf 'scripts/falsify: FAIL: %s\n' "$*" >&2
+    exit 1
+}
+
+trap 'status=$?; if [ "$status" -ne 0 ]; then printf "scripts/falsify: command failed with exit %s: %s\n" "$status" "$BASH_COMMAND" >&2; fi' ERR
+
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "${HOME:-}/.cargo/bin/cargo" ]; then
+        PATH="${HOME}/.cargo/bin:$PATH"
+        export PATH
+    else
+        fail "cargo not found on PATH or in ~/.cargo/bin"
+    fi
+fi
+command -v python3 >/dev/null 2>&1 || fail "python3 not found on PATH"
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum not found on PATH"
+
+[ -f "$ROOT/$TARGET_REL" ] || fail "comparator source is missing: $TARGET_REL"
+[ -f "$ROOT/Cargo.toml" ] || fail "Cargo.toml is missing"
+[ -f "$ROOT/Cargo.lock" ] || fail "Cargo.lock is missing"
+
+SOURCE_SHA_BEFORE=$(sha256sum "$ROOT/$TARGET_REL" | cut -d' ' -f1)
+MATCHES=$(grep -Fxc "$ORIGINAL_LINE" "$ROOT/$TARGET_REL" || true)
+[ "$MATCHES" -eq 1 ] \
+    || fail "expected exactly one comparator pass-decision line in $TARGET_REL, found $MATCHES; update this probe with the code"
+
+mkdir -p "$ART_ROOT"
+ART=$(mktemp -d "$ART_ROOT/falsify.XXXXXXXX")
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/rwildfire-falsify.XXXXXXXX")
+TMP=$(CDPATH= cd -- "$TMP" && pwd -P)
+case "$TMP" in
+    /*) ;;
+    *) fail "temporary directory did not resolve to an absolute path: $TMP" ;;
+esac
+[ -d "$TMP" ] && [ ! -L "$TMP" ] \
+    || fail "temporary directory is not an existing non-symlink directory: $TMP"
+case "$(basename -- "$TMP")" in
+    rwildfire-falsify.*) ;;
+    *) fail "refusing to clean unexpected temporary directory: $TMP" ;;
+esac
+trap 'rm -rf -- "$TMP"' EXIT
+
+cp -a "$ROOT/Cargo.toml" "$ROOT/Cargo.lock" "$ROOT/crates" "$TMP/"
+cp -a "$ROOT/$TARGET_REL" "$TMP/$TARGET_REL.orig"
+[ "$(sha256sum "$ROOT/$TARGET_REL" | cut -d' ' -f1)" = "$SOURCE_SHA_BEFORE" ] \
+    || fail "shared comparator source changed during the copy; refusing to claim a stable probe"
+
+export CARGO_TARGET_DIR="$TMP/target"
+
+test_count() {
+    grep -Eo 'running [0-9]+ tests?' "$1" | awk '{sum += $2} END {print sum + 0}'
+}
+
+run_tests() {
+    local log=$1
+    local status=0
+    ( cd "$TMP" && cargo test --locked -p rwildfire-parity --no-fail-fast ) >"$log" 2>&1 || status=$?
+    tail -n 20 "$log"
+    return "$status"
+}
+
+printf 'scripts/falsify: artifacts=%s\n' "$ART"
+printf 'scripts/falsify: baseline tests in throwaway copy (expect pass)\n'
+BASELINE_LOG="$ART/baseline.log"
+if ! run_tests "$BASELINE_LOG"; then
+    fail "unmodified copy tests failed; a mutation result would prove nothing (log: $BASELINE_LOG)"
+fi
+BASELINE_COUNT=$(test_count "$BASELINE_LOG")
+[ "$BASELINE_COUNT" -gt 0 ] \
+    || fail "unmodified copy collected zero tests; a mutation result would prove nothing"
+
+printf 'scripts/falsify: mutate %s (expect test failure)\n' "$TARGET_REL"
+python3 - "$TMP/$TARGET_REL" "$ORIGINAL_LINE" "$MUTANT_LINE" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+original = sys.argv[2]
+mutant = sys.argv[3]
+text = path.read_text(encoding="utf-8")
+count = text.count(original + "\n")
+if count != 1:
+    raise SystemExit(f"expected exactly one mutation site, found {count}")
+mutated = text.replace(original + "\n", mutant + "\n", 1)
+if mutated == text:
+    raise SystemExit("mutation did not change the file")
+path.write_text(mutated, encoding="utf-8")
+PY
+
+MUTANT_LOG="$ART/mutant.log"
+if run_tests "$MUTANT_LOG"; then
+    MUTANT_STATUS=0
+else
+    MUTANT_STATUS=$?
+fi
+if [ "$MUTANT_STATUS" -eq 0 ]; then
+    fail "all tests passed with the comparator's pass decision forced true; the suite does not detect a bypass (log: $MUTANT_LOG)"
+fi
+MUTANT_COUNT=$(test_count "$MUTANT_LOG")
+[ "$MUTANT_COUNT" -eq "$BASELINE_COUNT" ] \
+    || fail "collected test count changed under mutation: baseline=$BASELINE_COUNT mutant=$MUTANT_COUNT"
+[ "$MUTANT_COUNT" -gt 0 ] || fail "mutant run collected zero tests"
+
+cp -a "$TMP/$TARGET_REL.orig" "$TMP/$TARGET_REL"
+[ "$(sha256sum "$TMP/$TARGET_REL" | cut -d' ' -f1)" = "$SOURCE_SHA_BEFORE" ] \
+    || fail "temporary copy was not restored from its byte backup"
+[ "$(sha256sum "$ROOT/$TARGET_REL" | cut -d' ' -f1)" = "$SOURCE_SHA_BEFORE" ] \
+    || fail "shared comparator source changed during the probe"
+
+printf 'scripts/falsify: PASS baseline=%s tests, mutant exit=%s with the same count\n' \
+    "$BASELINE_COUNT" "$MUTANT_STATUS"
+printf 'scripts/falsify: evidence logs in %s\n' "$ART"

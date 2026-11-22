@@ -1,0 +1,11 @@
+[package]
+name = "rwildfire-parity"
+description = "Reference and candidate trace comparator for the rwildfire parity harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

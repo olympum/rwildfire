@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# Local and hosted parity gate.
+#
+# The gate fails closed. A missing Java 8 runtime, missing fixture, empty
+# capture, empty comparison, unexpected exit code, or zero collected tests is
+# a failure, never a skip.
+set -Eeuo pipefail
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+
+PINNED_COMMIT=2a26806eb7487ea60eb3b1a554c8a73120d54343
+SUITE=primitives-v1
+GOLDEN="$ROOT/fixtures/primitives-v1.json"
+DESCRIPTOR="$ROOT/fixtures/primitives-v1.suite.json"
+ART_ROOT="$ROOT/artifacts"
+SOURCE=${JWILDFIRE_SOURCE:-}
+
+usage() {
+    cat <<'EOF'
+Usage: scripts/check [--source PATH]
+
+Runs the complete local parity gate:
+  - cargo fmt --check
+  - cargo clippy --workspace --all-targets --locked -- -D warnings
+  - cargo test --workspace --locked, with nonempty cli and library integration
+    targets and no ignored tests
+  - required Python tooling tests from tools/tests, with no skipped tests
+  - real Java oracle prepare and two independent captures
+  - fresh-to-fresh and committed-golden-to-fresh comparisons
+  - a numeric-mutant candidate that must be rejected with exit 1
+
+Without --source the oracle prepares the pinned revision in .cache/source/.
+With --source PATH the oracle uses that existing checkout; prepare rejects a
+dirty checkout or a revision other than the pinned commit. JWILDFIRE_SOURCE
+sets the same path.
+
+Requires JDK 8, either via JAVA_HOME or java/javac on PATH. The gate never
+downloads a JDK. Transient captures and reports go under ignored artifacts/.
+The committed golden fixtures/primitives-v1.json is never rewritten.
+EOF
+}
+
+fail() {
+    printf 'scripts/check: FAIL: %s\n' "$*" >&2
+    exit 1
+}
+
+on_error() {
+    local status=$?
+    printf 'scripts/check: command failed with exit %s: %s\n' "$status" "$BASH_COMMAND" >&2
+}
+trap on_error ERR
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --source)
+            [ "$#" -ge 2 ] || fail "--source requires a path"
+            SOURCE=$2
+            shift 2
+            ;;
+        --source=*)
+            SOURCE=${1#--source=}
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage >&2
+            fail "unknown argument: $1"
+            ;;
+    esac
+done
+
+if [ -n "$SOURCE" ]; then
+    [ -d "$SOURCE" ] || fail "source path does not exist or is not a directory: $SOURCE"
+    SOURCE=$(CDPATH= cd -- "$SOURCE" && pwd)
+    printf 'scripts/check: source=%s (identity and cleanliness are validated by tools/oracle.py prepare)\n' "$SOURCE"
+else
+    printf 'scripts/check: source=oracle default prepared cache\n'
+fi
+
+# Cargo is commonly installed in ~/.cargo/bin without being on a minimal PATH.
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "${HOME:-}/.cargo/bin/cargo" ]; then
+        PATH="${HOME}/.cargo/bin:$PATH"
+        export PATH
+    else
+        fail "cargo not found on PATH or in ~/.cargo/bin"
+    fi
+fi
+command -v rustc >/dev/null 2>&1 || fail "rustc not found on PATH"
+command -v python3 >/dev/null 2>&1 || fail "python3 not found on PATH"
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum not found on PATH"
+
+# Resolve the Java 8 compiler and runtime. No download, no fallback runtime.
+if [ -n "${JAVA_HOME:-}" ]; then
+    JAVA="$JAVA_HOME/bin/java"
+    JAVAC="$JAVA_HOME/bin/javac"
+    [ -x "$JAVA" ] || fail "JAVA_HOME is set but $JAVA is not executable"
+    [ -x "$JAVAC" ] || fail "JAVA_HOME is set but $JAVAC is not executable"
+    JAVA_SOURCE="JAVA_HOME=$JAVA_HOME"
+else
+    JAVA=$(command -v java || true)
+    JAVAC=$(command -v javac || true)
+    [ -n "$JAVA" ] || fail "java not found; set JAVA_HOME to a JDK 8 installation"
+    [ -n "$JAVAC" ] || fail "javac not found; set JAVA_HOME to a JDK 8 installation"
+    JAVA_SOURCE="PATH"
+fi
+JAVA_VERSION=$("$JAVA" -version 2>&1 | head -n 1)
+JAVAC_VERSION=$("$JAVAC" -version 2>&1 | head -n 1)
+case "$JAVA_VERSION" in
+    *'"1.8.'*) ;;
+    *) fail "java is not JDK 8 ($JAVA_VERSION); set JAVA_HOME to JDK 8" ;;
+esac
+case "$JAVAC_VERSION" in
+    *'1.8.'*) ;;
+    *) fail "javac is not JDK 8 ($JAVAC_VERSION); set JAVA_HOME to JDK 8" ;;
+esac
+printf 'scripts/check: java=%s (%s)\n' "$JAVA_VERSION" "$JAVA_SOURCE"
+
+for required in tools/oracle.py tools/verify_oracle.py "$GOLDEN" "$DESCRIPTOR" Cargo.toml; do
+    [ -f "$required" ] || fail "required file is missing: $required"
+done
+
+mkdir -p "$ART_ROOT"
+ART=$(mktemp -d "$ART_ROOT/check.XXXXXXXX")
+printf 'scripts/check: artifacts=%s\n' "$ART"
+
+GOLDEN_SHA_BEFORE=$(sha256sum "$GOLDEN" | cut -d' ' -f1)
+printf 'scripts/check: committed golden sha256=%s\n' "$GOLDEN_SHA_BEFORE"
+
+# The validator has its own positive and negative controls. Run them before
+# trusting any capture or report assertion below.
+printf '\n== validator self-test\n'
+python3 tools/verify_oracle.py self-test
+
+printf '\n== suite descriptor\n'
+python3 tools/verify_oracle.py check-descriptor "$DESCRIPTOR" --suite "$SUITE"
+
+printf '\n== cargo fmt --check\n'
+cargo fmt --check
+
+printf '\n== cargo clippy\n'
+cargo clippy --workspace --all-targets --locked -- -D warnings
+
+RUST_LOG="$ART/rust-tests.log"
+printf '\n== cargo test\n'
+trap - ERR
+set +e
+cargo test --workspace --locked >"$RUST_LOG" 2>&1
+RUST_STATUS=$?
+set -e
+trap on_error ERR
+cat "$RUST_LOG"
+[ "$RUST_STATUS" -eq 0 ] || fail "cargo test failed with exit $RUST_STATUS (log: $RUST_LOG)"
+
+PY_LOG="$ART/python-tests.log"
+[ -d tools/tests ] || fail "tools/tests is missing; the oracle tooling suite is required"
+printf '\n== python tooling tests\n'
+trap - ERR
+set +e
+python3 -m unittest discover -s tools/tests -v >"$PY_LOG" 2>&1
+PY_STATUS=$?
+set -e
+trap on_error ERR
+cat "$PY_LOG"
+[ "$PY_STATUS" -eq 0 ] || fail "python tooling tests failed with exit $PY_STATUS (log: $PY_LOG)"
+
+printf '\n== test execution enforcement\n'
+python3 tools/verify_oracle.py check-test-logs --cargo "$RUST_LOG" --python "$PY_LOG" \
+    || fail "test execution is not nonempty, passing, and skip-free (logs: $RUST_LOG, $PY_LOG)"
+
+PREPARE=(python3 tools/oracle.py prepare)
+CAPTURE_A=(python3 tools/oracle.py capture --output "$ART/fresh-a.json")
+CAPTURE_B=(python3 tools/oracle.py capture --output "$ART/fresh-b.json")
+if [ -n "$SOURCE" ]; then
+    PREPARE+=(--source "$SOURCE")
+    CAPTURE_A+=(--source "$SOURCE")
+    CAPTURE_B+=(--source "$SOURCE")
+fi
+
+printf '\n== oracle prepare\n'
+"${PREPARE[@]}"
+
+printf '\n== fresh Java CPU scene comparison\n'
+scripts/check-cpu-scene
+
+# Two separate processes, each compiling the pinned Java oracle afresh.
+printf '\n== oracle capture A\n'
+"${CAPTURE_A[@]}"
+printf '\n== oracle capture B\n'
+"${CAPTURE_B[@]}"
+
+for capture in "$ART/fresh-a.json" "$ART/fresh-b.json"; do
+    [ -s "$capture" ] || fail "capture is missing or empty: $capture"
+done
+for sidecar in "$ART/fresh-a.provenance.json" "$ART/fresh-b.provenance.json"; do
+    [ -s "$sidecar" ] || fail "runtime provenance sidecar is missing or empty: $sidecar"
+done
+
+printf '\n== capture scope validation\n'
+python3 tools/verify_oracle.py check-capture "$ART/fresh-a.json" --descriptor "$DESCRIPTOR" \
+    --upstream-commit "$PINNED_COMMIT"
+python3 tools/verify_oracle.py check-capture "$ART/fresh-b.json" --descriptor "$DESCRIPTOR" \
+    --upstream-commit "$PINNED_COMMIT"
+
+compare_pass() {
+    local reference=$1
+    local candidate=$2
+    local report=$3
+    local label=$4
+    printf '\n== comparator: %s (expect pass)\n' "$label"
+    cargo run --locked -p rwildfire-parity -- compare "$reference" "$candidate" --json >"$report" \
+        || fail "comparator did not pass $label (report: $report)"
+    python3 tools/verify_oracle.py assert-pass-report "$report" --descriptor "$DESCRIPTOR" \
+        --upstream-commit "$PINNED_COMMIT" \
+        || fail "comparator report for $label is not a full-suite pass"
+}
+
+compare_pass "$ART/fresh-a.json" "$ART/fresh-b.json" "$ART/report-fresh-fresh.json" \
+    "independent fresh captures"
+compare_pass "$GOLDEN" "$ART/fresh-a.json" "$ART/report-golden-fresh.json" \
+    "committed golden vs fresh capture"
+
+printf '\n== comparator: explicit numeric mutant (expect exit 1)\n'
+python3 tools/verify_oracle.py mutate-capture "$ART/fresh-a.json" "$ART/mutant.json" \
+    "$ART/mutant.meta.json" --descriptor "$DESCRIPTOR" \
+    --upstream-commit "$PINNED_COMMIT"
+trap - ERR
+set +e
+cargo run --locked -p rwildfire-parity -- compare "$ART/fresh-a.json" "$ART/mutant.json" --json \
+    >"$ART/report-mutant.json" 2>"$ART/report-mutant.err"
+MUTANT_STATUS=$?
+set -e
+trap on_error ERR
+if [ "$MUTANT_STATUS" -ne 1 ]; then
+    cat "$ART/report-mutant.err" >&2
+    fail "numeric mutant exited $MUTANT_STATUS, expected 1 (0 means the comparator missed a real difference; 2 means invalid input)"
+fi
+python3 tools/verify_oracle.py assert-fail-report "$ART/report-mutant.json" \
+    --descriptor "$DESCRIPTOR" --upstream-commit "$PINNED_COMMIT" \
+    --mutation "$ART/mutant.meta.json" \
+    || fail "mutant report did not name exactly the intended finite numeric mismatch"
+printf 'scripts/check: numeric mutant rejected with exit 1\n'
+
+GOLDEN_SHA_AFTER=$(sha256sum "$GOLDEN" | cut -d' ' -f1)
+[ "$GOLDEN_SHA_BEFORE" = "$GOLDEN_SHA_AFTER" ] \
+    || fail "committed golden changed during the gate: $GOLDEN_SHA_BEFORE -> $GOLDEN_SHA_AFTER"
+
+printf '\nscripts/check: PASS (golden sha256=%s, artifacts=%s)\n' \
+    "$GOLDEN_SHA_AFTER" "$ART"

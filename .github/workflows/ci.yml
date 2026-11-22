@@ -1,0 +1,52 @@
+name: parity
+
+# One Linux gate for the initial harness. It runs the same ./scripts/check as
+# a local developer, including real JDK 8 Java captures, so a hosted result is
+# the observed local contract rather than a separate CI-only check.
+#
+# No dependency cache: a stale cache keyed only on a lockfile hash can hide
+# toolchain or source drift. The runner starts clean and the gate uses
+# --locked. No secrets, deployment, publishing, or write permission is needed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    name: Linux parity gate (Temurin 8, stable Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Full SHA resolved from refs/tags/v5.1.0 on the upstream repository and
+      # verified by fetching action.yml at this SHA. Keep the version comment
+      # in sync when rotating.
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Full SHA resolved from refs/tags/v5.7.0 and verified by fetching
+      # action.yml at this SHA. setup-java supplies JAVA_HOME for Temurin 8;
+      # tools/oracle.py never downloads a runtime.
+      - name: Set up Temurin JDK 8
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Install stable Rust with rustfmt and Clippy
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy --no-self-update
+          rustup default stable
+          rustc --version
+          cargo --version
+          java -version
+          javac -version
+
+      - name: Run local parity gate
+        run: ./scripts/check

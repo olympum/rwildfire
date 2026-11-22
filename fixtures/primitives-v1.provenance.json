@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "2a26806eb7487ea60eb3b1a554c8a73120d54343",
+  "upstream_source": "https://github.com/thargor6/JWildfire.git",
+  "suite": "primitives-v1",
+  "seed": 123456789,
+  "source_clean": true,
+  "source_check": "git-worktree-clean+index-flags-clean-v1",
+  "source_tree": "18f43c2c29cea6827d7082e6727cdf31fcb3f87c",
+  "source_digest_sha256": "b370ac3aa744ee27dbd027b40f42ca442e347f74fca86708ba6732824ffc5bf8",
+  "probe_path": "oracle/PrimitivesV1Probe.java",
+  "probe_sha256": "ea7171592ed694cd97f7d888fa74c19567cad3d07c9ae022c821834cdcf86d34",
+  "suite_descriptor_path": "fixtures/primitives-v1.suite.json",
+  "suite_descriptor_sha256": "6e80380aaeb81581c560be21dab436e7c69dbd783c8d38c90e06dd8f36d6bd0a",
+  "java_version": "1.8.0_512",
+  "java_version_output": [
+    "openjdk version \"1.8.0_512\"",
+    "OpenJDK Runtime Environment (Temurin)(build 1.8.0_512-b09)",
+    "OpenJDK 64-Bit Server VM (Temurin)(build 25.512-b09, mixed mode)"
+  ],
+  "javac_version": "javac 1.8.0_512",
+  "math_library": "FAST_MATH",
+  "oracle_protocol": "json-stdout-v1",
+  "build_mode": "fresh-temp-v1",
+  "reference_sha256": "47475a2c48f6c8ab2d545f06c99d3bc60330d9c516a95857597329c48a496eb8"
+}
