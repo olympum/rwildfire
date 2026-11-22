@@ -24,6 +24,7 @@ pub struct Transform {
     pub waves: f64,
     pub bubble: f64,
     pub spiral: f64,
+    pub pdj: f64,
 }
 type Element<'a, 'i> = Node<'a, 'i>;
 fn required<'i>(n: Element<'_, 'i>, key: &str) -> Result<String, String> {
@@ -181,6 +182,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "waves",
                 "bubble",
                 "spiral",
+                "pdj",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -204,11 +206,17 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         let waves = number(c, "waves", 0.)?;
         let bubble = number(c, "bubble", 0.)?;
         let spiral = number(c, "spiral", 0.)?;
+        let pdj = number(c, "pdj", 0.)?;
         if weight < 0.
             || !(0.0..=1.0).contains(&color)
             || !(-1.0..=1.0).contains(&symmetry)
             || affine.iter().any(|v| !v.is_finite())
-            || (linear == 0. && spherical == 0. && waves == 0. && bubble == 0. && spiral == 0.)
+            || (linear == 0.
+                && spherical == 0.
+                && waves == 0.
+                && bubble == 0.
+                && spiral == 0.
+                && pdj == 0.)
         {
             return Err("invalid xform weight, color, coefficients or variation amounts".into());
         }
@@ -222,6 +230,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             waves,
             bubble,
             spiral,
+            pdj,
         });
     }
     let total = transforms.iter().map(|t| t.weight).sum::<f64>();
