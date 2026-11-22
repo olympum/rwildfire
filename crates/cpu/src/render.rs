@@ -45,6 +45,7 @@ fn table(transforms: &[Transform]) -> [usize; TABLE_SIZE] {
 struct Point {
     x: f64,
     y: f64,
+    z: f64,
     color: f64,
 }
 impl Point {
@@ -54,21 +55,32 @@ impl Point {
         let ay = b * self.x + e * self.y + ty;
         let mut x = 0.0;
         let mut y = 0.0;
+        let mut z = 0.0;
         if t.linear != 0.0 {
             x += t.linear * ax;
             y += t.linear * ay;
+            z += t.linear * self.z;
         }
         if t.spherical != 0.0 {
-            let r = t.spherical / (ax * ax + ay * ay + 1.0e-300);
+            let r = t.spherical / (ax * ax + ay * ay + self.z * self.z + 1.0e-300);
             x += ax * r;
             y += ay * r;
+            z += self.z * r;
         }
         if t.waves != 0.0 {
             x += t.waves * (ax + d * crate::fast_sin::sin(ay / (tx * tx + 1.0e-300)));
             y += t.waves * (ay + e * crate::fast_sin::sin(ax / (ty * ty + 1.0e-300)));
         }
+        if t.bubble != 0.0 {
+            let radius = (ax * ax + ay * ay) / 4.0 + 1.0;
+            let scale = t.bubble / radius;
+            x += scale * ax;
+            y += scale * ay;
+            z += t.bubble * (2.0 / radius - 1.0);
+        }
         self.x = x;
         self.y = y;
+        self.z = z;
         let c1 = (1.0 + t.symmetry) * 0.5;
         let c2 = t.color * (1.0 - t.symmetry) * 0.5;
         self.color = self.color * c1 + c2;
@@ -98,6 +110,7 @@ impl<'a> Sampler<'a> {
         let mut state = Point {
             x: 2.0 * rng.next() - 1.0,
             y: 2.0 * rng.next() - 1.0,
+            z: 0.0,
             color: rng.next(),
         };
         rng.next(); // Initial material draw, even for the ordinary color raster.
@@ -157,6 +170,7 @@ impl<'a> Sampler<'a> {
         Sample {
             transform,
             point,
+            z: self.state.z,
             color,
             palette_index,
             pixel,
@@ -167,6 +181,7 @@ impl<'a> Sampler<'a> {
 pub struct Sample {
     pub transform: usize,
     pub point: [f64; 2],
+    pub z: f64,
     pub color: f64,
     pub palette_index: usize,
     pub pixel: Option<[usize; 2]>,
