@@ -3,9 +3,12 @@
     cargo run --release --locked -p rwildfire-cpu -- /path/to/JWildfire/resources/flames/TINA0010.flame /tmp/tina0010.png
 
 The preview reads original flame XML directly. It supports legacy single-layer
-2D scenes with an RGB palette, camera roll, weighted XY transforms, linear3D
-spherical3D, and `waves`. Extreme `waves` angles fall back to Rust’s standard
-sine rather than Java’s large-angle reduction. The legacy XML `rotate` value is read in degrees, as in JWildfire.
+2D scenes with an RGB palette, camera roll, weighted XY transforms, and the
+`linear3D`, `spherical3D`, and `waves` variations. For `waves` angles above
+about 12,739 radians in magnitude, Rust uses its standard sine instead of
+Java’s large-angle reduction. Small or zero affine translations can reach
+that range. Mixed transforms with three active variations use a fixed Rust
+accumulation order; parity for those combinations is unverified. The legacy XML `rotate` value is read in degrees, as in JWildfire.
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
 intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute

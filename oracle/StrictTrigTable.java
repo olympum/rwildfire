@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// Table layout adapted from JWildfire FastMathLibImpl and Jafama; see NOTICE.md.
 // Regenerate crates/cpu/src/strict_trig_table.in with JDK 8.
 public final class StrictTrigTable {
   public static void main(String[] args) {

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Adapted from JWildfire 9.20 FastMathLibImpl (LGPL-2.1-or-later).
+// Adapted from JWildfire 9.20 FastMathLibImpl (Andreas Maschke, LGPL-2.1-or-later).
+// Jafama algorithm attribution: Copyright 2012–2017 Jeff Hain (Apache-2.0).
+// This port uses fixed lookup bits and omits large-angle reduction. See NOTICE.md.
 const SIZE: usize = 2048;
 const STEP_HI: f64 = 4.0 * f64::from_bits(4609753056924401664) / SIZE as f64;
 const STEP_LO: f64 = 4.0 * f64::from_bits(4454258360616903473) / SIZE as f64;
