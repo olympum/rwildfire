@@ -21,6 +21,7 @@ pub struct Transform {
     pub affine: [f64; 6],
     pub linear: f64,
     pub spherical: f64,
+    pub waves: f64,
 }
 type Element<'a, 'i> = Node<'a, 'i>;
 fn required<'i>(n: Element<'_, 'i>, key: &str) -> Result<String, String> {
@@ -175,6 +176,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "chaos",
                 "linear3D",
                 "spherical3D",
+                "waves",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -195,11 +197,12 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         let affine = vector::<f64, 6>(c, "coefs")?;
         let linear = number(c, "linear3D", 0.)?;
         let spherical = number(c, "spherical3D", 0.)?;
+        let waves = number(c, "waves", 0.)?;
         if weight < 0.
             || !(0.0..=1.0).contains(&color)
             || !(-1.0..=1.0).contains(&symmetry)
             || affine.iter().any(|v| !v.is_finite())
-            || (linear == 0. && spherical == 0.)
+            || (linear == 0. && spherical == 0. && waves == 0.)
         {
             return Err("invalid xform weight, color, coefficients or variation amounts".into());
         }
@@ -210,6 +213,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             affine,
             linear,
             spherical,
+            waves,
         });
     }
     let total = transforms.iter().map(|t| t.weight).sum::<f64>();

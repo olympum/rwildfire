@@ -50,6 +50,7 @@ fn verify(xml: &str, reference: &str) {
                 f,
                 t.linear,
                 t.spherical,
+                t.waves,
             ],
             &row("xform")[1..],
             &format!("xform {i}"),
@@ -102,7 +103,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let source = std::path::Path::new(source).join("resources/flames");
     let captures = std::path::Path::new(captures);
-    for name in ["TINA0010", "TINA0004", "TINA0006", "TINA0008"] {
+    for name in [
+        "TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021",
+    ] {
         let xml = std::fs::read_to_string(source.join(format!("{name}.flame")))?;
         let trace = std::fs::read_to_string(captures.join(format!("{name}.txt")))?;
         println!("{name}: comparing Rust against fresh Java scene trace");
