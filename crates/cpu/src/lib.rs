@@ -1,4 +1,5 @@
 mod fast_sin;
+mod fast_sqrt;
 mod filter;
 mod render;
 pub mod scene;
