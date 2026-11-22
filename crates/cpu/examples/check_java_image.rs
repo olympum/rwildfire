@@ -30,13 +30,17 @@ fn read_png(path: &Path) -> Result<Image, Box<dyn Error>> {
     Ok(([info.width, info.height], pixels))
 }
 
-fn capture(flame: &Path, work: &Path, unfiltered: bool) -> Result<(), Box<dyn Error>> {
+fn capture(
+    flame: &Path,
+    work: &Path,
+    quality: u32,
+    unfiltered: bool,
+) -> Result<(), Box<dyn Error>> {
     let mut scene = parse(&fs::read_to_string(flame)?)?;
     if unfiltered {
         scene.filter_radius = 0.0;
     }
     let size = [(scene.width * 2) as u32, (scene.height * 2) as u32];
-    let quality = 100;
     let mut raster = BufWriter::new(File::create(work.join("raster.bin"))?);
     for value in [size[0], size[1], quality] {
         raster.write_all(&value.to_be_bytes())?;
@@ -124,15 +128,16 @@ fn compare(work: &Path, mode: &str) -> Result<bool, Box<dyn Error>> {
 fn run() -> Result<bool, Box<dyn Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.as_slice() {
-        [mode, flame, work] if mode == "filtered" || mode == "unfiltered" => {
-            capture(Path::new(flame), Path::new(work), mode == "unfiltered")?;
+        [mode, flame, work, quality] if mode == "filtered" || mode == "unfiltered" => {
+            let quality = quality.to_str().ok_or("invalid quality")?.parse()?;
+            capture(Path::new(flame), Path::new(work), quality, mode == "unfiltered")?;
             Ok(true)
         }
         [mode, work] if mode == "compare" || mode == "mutate" || mode == "omit" => {
             compare(Path::new(work), mode.to_str().unwrap())
         }
         _ => Err(
-            "usage: check_java_image filtered|unfiltered FLAME WORK_DIR | compare|mutate|omit WORK_DIR"
+            "usage: check_java_image filtered|unfiltered FLAME WORK_DIR QUALITY | compare|mutate|omit WORK_DIR"
                 .into(),
         ),
     }
