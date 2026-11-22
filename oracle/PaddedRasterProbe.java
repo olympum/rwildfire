@@ -16,7 +16,10 @@ public class PaddedRasterProbe {
     int width = 2 * flame.getWidth(), height = 2 * flame.getHeight();
     flame.setPixelsPerUnitScale(2.0);
     flame.setAntialiasAmount(0.0);
-    int quality = 100;
+    int quality = (int) flame.getSampleDensity();
+    if (quality <= 0 || quality != flame.getSampleDensity()) {
+      throw new AssertionError("expected positive integer flame quality");
+    }
     MarsagliaRandomGenerator rng = new MarsagliaRandomGenerator();
     rng.randomize(741103597L);
     int border = new LogDensityFilter(flame, rng).getBorderWidth();

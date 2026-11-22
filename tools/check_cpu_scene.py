@@ -21,14 +21,13 @@ def main():
         parser.exit(1, f"check-cpu-scene: {exc}\n")
 
 
-def compare_padded_rasters(reference, candidate):
-    layout = (1014, 668, 100)  # original TINA0010 at 2x, quality 100
+def compare_padded_rasters(reference, candidate, name, layout):
     width, height = layout[0] + 4, layout[1] + 4
     bins = width * height
     header = struct.pack(">III", *layout)
     if any(len(data) != len(header) + 16 * bins or not data.startswith(header)
            for data in (reference, candidate)):
-        raise oracle.OracleError("invalid TINA0010 padded raster dimensions, quality or length")
+        raise oracle.OracleError(f"invalid {name} padded raster dimensions, quality or length")
     if candidate != reference:
         for offset in range(len(header), len(reference), 16):
             if reference[offset:offset + 16] != candidate[offset:offset + 16]:
@@ -40,7 +39,7 @@ def compare_padded_rasters(reference, candidate):
     budget = bins * layout[2]
     if not 0 < hits <= budget:
         raise oracle.OracleError(f"invalid accumulated hit count: {hits} for {budget} samples")
-    print(f"TINA0010: {bins:,} padded bins match bit-for-bit ({hits:,} hits, {budget:,} sample budget)", flush=True)
+    print(f"{name}: {bins:,} padded bins match bit-for-bit ({hits:,} hits, {budget:,} sample budget)", flush=True)
 
 
 def capture(source):
@@ -88,32 +87,37 @@ def capture(source):
         "--", str(export), str(work),
     ], cwd=oracle.ROOT, check=True, timeout=600)
 
-    flame = export / "resources/flames/TINA0010.flame"
     example = ["cargo", "run", "--release", "--locked", "-p", "rwildfire-cpu",
                "--example", "check_java_image", "--"]
-    java = [jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
-            "-cp", runtime_cp, "ImageV1Probe", str(flame)]
-    provenance["image"] = {"scene": "TINA0010", "probe_sha256": oracle.sha256_file(image_probe),
+    java = [jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}", "-cp", runtime_cp]
+    provenance["image"] = {"probe_sha256": oracle.sha256_file(image_probe),
                            "raster_probe_sha256": oracle.sha256_file(raster_probe)}
-    for mode in ("unfiltered", "filtered"):
-        image = work / mode
-        image.mkdir()
-        print(f"TINA0010 {mode} image:", flush=True)
-        subprocess.run([*example, mode, str(flame), str(image)],
+    for name, layout, mode in (
+        ("TINA0010", (1014, 668, 100), "unfiltered"),
+        ("TINA0010", (1014, 668, 100), "filtered"),
+        ("TINA0011", (932, 662, 3), "filtered"),
+        ("TINA0021", (932, 662, 100), "filtered"),
+    ):
+        flame = export / "resources/flames" / (name + ".flame")
+        provenance["image"].setdefault(name, {})
+        shade = [*java, "ImageV1Probe", str(flame)]
+        image = work / name / mode
+        image.mkdir(parents=True)
+        print(f"{name} {mode} image:", flush=True)
+        subprocess.run([*example, mode, str(flame), str(image), str(layout[2])],
                        cwd=oracle.ROOT, check=True, timeout=600)
         raster = str(image / "raster.bin")
         if mode == "filtered":
             reference = str(image / "java-raster.bin")
             subprocess.run([
-                jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
-                "-cp", runtime_cp, "PaddedRasterProbe", str(flame), reference,
+                *java, "PaddedRasterProbe", str(flame), reference,
             ], cwd=oracle.ROOT, check=True, timeout=120)
             java_bins, rust_bins = Path(reference).read_bytes(), Path(raster).read_bytes()
-            compare_padded_rasters(java_bins, rust_bins)
+            compare_padded_rasters(java_bins, rust_bins, name, layout)
             mutant_raster = bytearray(rust_bins)
             mutant_raster[15] ^= 1  # flip the low count bit in the first bin
             try:
-                compare_padded_rasters(java_bins, mutant_raster)
+                compare_padded_rasters(java_bins, mutant_raster, name, layout)
             except oracle.OracleError as exc:
                 if not str(exc).startswith("padded raster mismatch at (0, 0):"):
                     raise
@@ -121,20 +125,20 @@ def capture(source):
             else:
                 raise oracle.OracleError("one-bin raster mutation was accepted")
             raster = reference
-        subprocess.run([*java, raster, str(image / "java.png"), mode],
+        subprocess.run([*shade, raster, str(image / "java.png"), mode],
                        cwd=oracle.ROOT, check=True, timeout=120)
         subprocess.run([*example, "compare", str(image)], cwd=oracle.ROOT, check=True, timeout=120)
         control = "mutate"
         outputs = ["raster.bin", "java.png", "rust.png", "diff.png", "mutant-diff.png"]
         if mode == "filtered":
-            subprocess.run([*java, raster, str(image / "java-omitted.png"), "omit"],
+            subprocess.run([*shade, raster, str(image / "java-omitted.png"), "omit"],
                            cwd=oracle.ROOT, check=True, timeout=120)
             control = "omit"
             outputs[-1:] = ["java-raster.bin", "java-omitted.png", "omitted-diff.png"]
         mutant = subprocess.run([*example, control, str(image)], cwd=oracle.ROOT, timeout=120)
         if mutant.returncode != 1:
             raise oracle.OracleError(f"image {control} control exited {mutant.returncode}, expected 1")
-        provenance["image"][mode] = {name: oracle.sha256_file(image / name) for name in outputs}
+        provenance["image"][name][mode] = {name: oracle.sha256_file(image / name) for name in outputs}
     (work / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
 

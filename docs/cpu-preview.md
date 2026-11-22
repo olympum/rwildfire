@@ -25,11 +25,12 @@ check separately with JDK 8 and a clean checkout of the pinned revision:
 The probe uses Java model decoding, transform tables, point transforms, view
 projection and raster accumulation. It compares decoded values, 256 points and
 all occupied bins in that window per scene, without filtering or antialiasing.
-For radius-1 TINA0010, Java and Rust independently generate a seeded
-1018×672 padded raster for a 1014×668 output image. Quality 100 sets a budget
-of 68,409,600 iterations (100 per padded bin). The gate compares every bin’s
-count and float sums bit-for-bit, then compares every decoded RGB pixel. It
-rejects a modified bin and checks that bypassing the filter changes the image.
-The unfiltered path still uses a shared raster and rejects a one-channel
-mutation. Successful runs retain the rasters, images, differences and
-provenance. This does not test the production thread scheduler or adaptive filtering.
+For radius-1 TINA0010, TINA0011, and TINA0021, Java and Rust independently
+generate seeded padded rasters at each scene’s original quality (100, 3, and
+100 iterations per padded bin, respectively). The gate compares every bin’s
+count and float sums bit-for-bit, then compares every decoded RGB pixel.
+For each scene it rejects a modified bin and checks that bypassing the filter
+changes the image. The unfiltered TINA0010 path still uses a shared raster
+and rejects a one-channel mutation. Successful runs retain the rasters,
+images, differences, and provenance. The probes use one seeded stream with
+sampling antialiasing disabled; they do not test thread or RNG scheduling.

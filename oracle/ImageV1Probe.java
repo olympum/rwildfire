@@ -49,7 +49,7 @@ public class ImageV1Probe {
     if (filtered && (!flame.getSpatialFilterKernel().name().equals("MITCHELL_SMOOTH")
         || !flame.getSpatialFilterKernel().isSharpening() || flame.getSpatialFilterKernel().isAdaptive()
         || flame.getSpatialFilterRadius() != 1.0 || border != 2)) {
-      throw new AssertionError("expected original TINA0010 Mitchell Smooth radius 1, border 2");
+      throw new AssertionError("expected Mitchell Smooth radius 1, border 2");
     }
     int rasterWidth = width + 2 * border;
     int rasterHeight = height + 2 * border;
@@ -58,7 +58,7 @@ public class ImageV1Probe {
       if (in.readInt() != width || in.readInt() != height) throw new IOException("raster size differs from flame");
       int quality = in.readInt();
       if (quality <= 0) throw new IOException("invalid raster quality");
-      flame.setSampleDensity(quality);
+      if (quality != flame.getSampleDensity()) throw new IOException("raster quality differs from flame");
       raster.read(flame, rasterWidth, rasterHeight, quality, in);
     }
     density.setRaster(raster, rasterWidth, rasterHeight, width, height);
