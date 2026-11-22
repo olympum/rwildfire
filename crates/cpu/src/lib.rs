@@ -1,3 +1,3 @@
 mod render;
 pub mod scene;
-pub use render::{render, Bin, Sample, Sampler};
+pub use render::{render, render_with_raster, Bin, Sample, Sampler};
