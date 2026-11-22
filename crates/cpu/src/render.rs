@@ -74,7 +74,9 @@ pub struct Sampler<'a> {
     rng: Marsaglia,
     table: [usize; TABLE_SIZE],
     size: [usize; 2],
-    origin: [f64; 2],
+    projection_offset: [f64; 2],
+    sin_roll: f64,
+    cos_roll: f64,
     span: [f64; 2],
     scale: [f64; 2],
 }
@@ -95,16 +97,25 @@ impl<'a> Sampler<'a> {
         }
         let ppu = pixels_per_unit(scene, width, height);
         let size = [width, height];
-        let origin = std::array::from_fn(|i| scene.center[i] - size[i] as f64 / ppu / 2.0);
+        let origin: [f64; 2] =
+            std::array::from_fn(|i| scene.center[i] - size[i] as f64 / ppu / 2.0);
         let span = std::array::from_fn(|i| origin[i] + size[i] as f64 / ppu - origin[i]);
         let scale = std::array::from_fn(|i| size[i] as f64 / span[i]);
+        let (sin_roll, cos_roll) = (-std::f64::consts::PI * scene.roll_degrees / 180.0).sin_cos();
+        let [cx, cy] = scene.center;
+        let projection_offset = [
+            cx * (1.0 - cos_roll) - cy * sin_roll - origin[0],
+            cy * (1.0 - cos_roll) + cx * sin_roll - origin[1],
+        ];
         Self {
             scene,
             state,
             rng,
             table,
             size,
-            origin,
+            projection_offset,
+            sin_roll,
+            cos_roll,
             span,
             scale,
         }
@@ -116,7 +127,11 @@ impl<'a> Sampler<'a> {
         let point = [self.state.x, self.state.y];
         let color = self.state.color;
         let palette_index = ((color * 254.0 + 0.5) as usize).min(255);
-        let projected: [f64; 2] = std::array::from_fn(|i| point[i] - self.origin[i]);
+        let [x, y] = point;
+        let projected = [
+            x * self.cos_roll + y * self.sin_roll + self.projection_offset[0],
+            y * self.cos_roll - x * self.sin_roll + self.projection_offset[1],
+        ];
         let pixel = if (0..2).all(|i| projected[i] >= 0.0 && projected[i] <= self.span[i]) {
             let pixel: [usize; 2] =
                 std::array::from_fn(|i| (self.scale[i] * projected[i] + 0.5) as usize);
