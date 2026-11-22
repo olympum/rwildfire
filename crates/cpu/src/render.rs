@@ -210,8 +210,8 @@ pub fn render_with_raster(
     capture: impl FnOnce(&[Bin]) -> Result<(), String>,
 ) -> Result<Vec<u8>, String> {
     let samples = sample_budget(width, height, quality)?;
-    if !(0.0..=2.0).contains(&scene.filter_radius) {
-        return Err("supported Mitchell Smooth filter radius is 0..=2".into());
+    if scene.filter_radius != 0.0 && scene.filter_radius != 1.0 {
+        return Err("only filter radii 0 and 1 are supported".into());
     }
     let filter = Kernel::mitchell_smooth(scene.filter_radius);
     let border = filter.border();

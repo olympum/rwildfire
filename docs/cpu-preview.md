@@ -7,9 +7,10 @@ The preview reads original flame XML directly. It supports legacy single-layer
 and spherical3D. The legacy XML `rotate` value is read in degrees, as in JWildfire.
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
-intensity. The legacy `filter` attribute is the radius (0–2 supported; 0
-disables filtering; default 0.75). Other kernels, oversampling, and adaptive
-antialiasing are not supported.
+intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute
+keeps the prior unfiltered preview behavior; the missing-attribute case does
+not reproduce Java’s preference default. Other radii, kernels, oversampling,
+and adaptive antialiasing are not supported.
 
 The parity gate uses the originals TINA0010, TINA0004, TINA0006 and TINA0008 from the validated
 JWildfire 9.20 source export, not copies in this repository. To run the scene

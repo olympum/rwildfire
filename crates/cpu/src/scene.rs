@@ -133,9 +133,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let brightness = number(n, "brightness", 4.)?;
     let gamma = number(n, "gamma", 4.)?;
     let threshold = number(n, "gamma_threshold", 0.04)?;
-    let filter_radius = number(n, "filter", 0.75)?;
-    if !(0.0..=2.0).contains(&filter_radius) {
-        return Err("supported Mitchell Smooth filter radius is 0..=2".into());
+    let filter_radius = number(n, "filter", 0.0)?;
+    if filter_radius != 0.0 && filter_radius != 1.0 {
+        return Err("only filter radii 0 and 1 are supported".into());
     }
     if !(1..=2048).contains(&width)
         || !(1..=2048).contains(&height)

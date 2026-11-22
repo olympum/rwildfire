@@ -47,6 +47,7 @@ public class ImageV1Probe {
     LogDensityFilter density = new LogDensityFilter(flame, new MarsagliaRandomGenerator());
     int border = density.getBorderWidth();
     if (filtered && (!flame.getSpatialFilterKernel().name().equals("MITCHELL_SMOOTH")
+        || !flame.getSpatialFilterKernel().isSharpening() || flame.getSpatialFilterKernel().isAdaptive()
         || flame.getSpatialFilterRadius() != 1.0 || border != 2)) {
       throw new AssertionError("expected original TINA0010 Mitchell Smooth radius 1, border 2");
     }

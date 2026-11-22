@@ -1,4 +1,6 @@
-// Adapted from JWildfire's FilterKernel, FilterHolder and MitchellSmoothFilterKernel.
+// Adapted from JWildfire 9.20 (Copyright Andreas Maschke, LGPL-2.1-or-later):
+// FilterKernel, FilterHolder, MitchellSmoothFilterKernel, MitchellFilterKernel,
+// GaussianFilterKernel and LogDensityFilter. Distributed under GPL-3.0-or-later.
 pub(crate) struct Kernel {
     pub(crate) size: usize,
     pub(crate) weights: Vec<f64>,
