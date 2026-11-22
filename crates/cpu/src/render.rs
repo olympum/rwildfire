@@ -63,6 +63,10 @@ impl Point {
             x += ax * r;
             y += ay * r;
         }
+        if t.waves != 0.0 {
+            x += t.waves * (ax + d * crate::fast_sin::sin(ay / (tx * tx + 1.0e-300)));
+            y += t.waves * (ay + e * crate::fast_sin::sin(ax / (ty * ty + 1.0e-300)));
+        }
         self.x = x;
         self.y = y;
         let c1 = (1.0 + t.symmetry) * 0.5;
