@@ -21,10 +21,11 @@ check separately with JDK 8 and a clean checkout of the pinned revision:
 The probe uses Java model decoding, transform tables, point transforms, view
 projection and raster accumulation. It compares decoded values, 256 points and
 all occupied bins in that window per scene, without filtering or antialiasing.
-The gate shades shared deterministic TINA0010 rasters (100 samples per output
-pixel) with both implementations and compares every decoded 8-bit RGB pixel.
-It covers both the original radius-1 filter on a padded raster and the unfiltered
-path. The unfiltered check rejects a one-channel mutation; the filtered check
-rejects bypassing the kernel on the same padded raster. Successful runs retain
-the rasters, Java and Rust PNGs, difference PNGs, and provenance. This proves
-fixed-filter shading, not sampling-scheduler or adaptive-filter parity.
+For radius-1 TINA0010, Java and Rust independently generate a seeded
+1018×672 padded raster for a 1014×668 output image. Quality 100 sets a budget
+of 68,409,600 iterations (100 per padded bin). The gate compares every bin’s
+count and float sums bit-for-bit, then compares every decoded RGB pixel. It
+rejects a modified bin and checks that bypassing the filter changes the image.
+The unfiltered path still uses a shared raster and rejects a one-channel
+mutation. Successful runs retain the rasters, images, differences and
+provenance. This does not test the production thread scheduler or adaptive filtering.
