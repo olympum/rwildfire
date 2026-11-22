@@ -39,19 +39,29 @@ public class ImageV1Probe {
     int height = flame.getHeight() * 2;
     flame.setPixelsPerUnitScale(2.0);
     flame.setSpatialOversampling(1);
-    flame.setSpatialFilterRadius(0.0);
+    String mode = args[3];
+    boolean filtered = mode.equals("filtered") || mode.equals("omit");
+    if (!filtered && !mode.equals("unfiltered")) throw new IllegalArgumentException("unknown mode");
+    if (!filtered) flame.setSpatialFilterRadius(0.0);
     flame.setAntialiasAmount(0.0);
+    LogDensityFilter density = new LogDensityFilter(flame, new MarsagliaRandomGenerator());
+    int border = density.getBorderWidth();
+    if (filtered && (!flame.getSpatialFilterKernel().name().equals("MITCHELL_SMOOTH")
+        || !flame.getSpatialFilterKernel().isSharpening() || flame.getSpatialFilterKernel().isAdaptive()
+        || flame.getSpatialFilterRadius() != 1.0 || border != 2)) {
+      throw new AssertionError("expected original TINA0010 Mitchell Smooth radius 1, border 2");
+    }
+    int rasterWidth = width + 2 * border;
+    int rasterHeight = height + 2 * border;
     SharedRaster raster = new SharedRaster();
     try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(args[1])))) {
       if (in.readInt() != width || in.readInt() != height) throw new IOException("raster size differs from flame");
       int quality = in.readInt();
       if (quality <= 0) throw new IOException("invalid raster quality");
       flame.setSampleDensity(quality);
-      raster.read(flame, width, height, quality, in);
+      raster.read(flame, rasterWidth, rasterHeight, quality, in);
     }
-    LogDensityFilter density = new LogDensityFilter(flame, new MarsagliaRandomGenerator());
-    if (density.getBorderWidth() != 0) throw new AssertionError("unfiltered raster must have no border");
-    density.setRaster(raster, width, height, width, height);
+    density.setRaster(raster, rasterWidth, rasterHeight, width, height);
     GammaCorrectionFilter gamma = new GammaCorrectionFilter(flame, false, width, height);
     FlameBackgroundRenderContext background = new FlameBackgroundRenderContext(flame, 0);
     LogDensityPoint logPoint = new LogDensityPoint(0);
@@ -59,7 +69,8 @@ public class ImageV1Probe {
     BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
-        density.transformPointSimple(background, logPoint, x, y);
+        if (mode.equals("filtered")) density.transformPoint(background, logPoint, x, y);
+        else density.transformPointSimple(background, logPoint, x, y);
         gamma.transformPoint(logPoint, rgb, x, y);
         image.setRGB(x, y, (rgb.red << 16) | (rgb.green << 8) | rgb.blue);
       }

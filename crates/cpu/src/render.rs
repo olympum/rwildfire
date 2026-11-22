@@ -1,6 +1,9 @@
 // Sampling equations adapted from JWildfire 9.20 (Andreas Maschke and contributors, LGPL-2.1-or-later).
 // This Rust port is distributed under GPL-3.0-or-later.
-use crate::scene::{Scene, Transform};
+use crate::{
+    filter::Kernel,
+    scene::{Scene, Transform},
+};
 
 const TABLE_SIZE: usize = 1024;
 const SEED: i64 = 741103597;
@@ -83,6 +86,10 @@ pub struct Sampler<'a> {
 
 impl<'a> Sampler<'a> {
     pub fn new(scene: &'a Scene, width: usize, height: usize) -> Self {
+        Self::with_border(scene, width, height, 0)
+    }
+
+    fn with_border(scene: &'a Scene, width: usize, height: usize, border: usize) -> Self {
         let mut rng = Marsaglia::seeded(SEED);
         let mut state = Point {
             x: 2.0 * rng.next() - 1.0,
@@ -96,10 +103,14 @@ impl<'a> Sampler<'a> {
             state.apply(&scene.transforms[select(&mut rng, &table)]);
         }
         let ppu = pixels_per_unit(scene, width, height);
-        let size = [width, height];
-        let origin: [f64; 2] =
-            std::array::from_fn(|i| scene.center[i] - size[i] as f64 / ppu / 2.0);
-        let span = std::array::from_fn(|i| origin[i] + size[i] as f64 / ppu - origin[i]);
+        let image = [width, height];
+        let size = image.map(|n| n + 2 * border);
+        let border_units = border as f64 / ppu;
+        let corner: [f64; 2] =
+            std::array::from_fn(|i| scene.center[i] - image[i] as f64 / ppu / 2.0);
+        let origin = corner.map(|c| c - border_units);
+        let span =
+            std::array::from_fn(|i| corner[i] + image[i] as f64 / ppu + border_units - origin[i]);
         let scale = std::array::from_fn(|i| size[i] as f64 / span[i]);
         let (sin_roll, cos_roll) = (-std::f64::consts::PI * scene.roll_degrees / 180.0).sin_cos();
         let [cx, cy] = scene.center;
@@ -198,22 +209,35 @@ pub fn render_with_raster(
     quality: usize,
     capture: impl FnOnce(&[Bin]) -> Result<(), String>,
 ) -> Result<Vec<u8>, String> {
-    let (count, samples) = dimensions(width, height, quality)?;
-    let mut sampler = Sampler::new(scene, width, height);
-    let mut raster = vec![Bin::default(); count];
+    let samples = sample_budget(width, height, quality)?;
+    if scene.filter_radius != 0.0 && scene.filter_radius != 1.0 {
+        return Err("only filter radii 0 and 1 are supported".into());
+    }
+    let filter = Kernel::mitchell_smooth(scene.filter_radius);
+    let border = filter.border();
+    let stride = width + 2 * border;
+    let mut sampler = Sampler::with_border(scene, width, height, border);
+    let mut raster = vec![Bin::default(); stride * (height + 2 * border)];
     for _ in 0..samples {
         let sample = sampler.step();
         if let Some([x, y]) = sample.pixel {
-            raster[y * width + x].add(scene.palette[sample.palette_index]);
+            raster[y * stride + x].add(scene.palette[sample.palette_index]);
         }
     }
     capture(&raster)?;
-    Ok(shade(scene, width, height, quality, &raster))
+    Ok(shade(scene, width, height, quality, &raster, &filter))
 }
 
-// Unfiltered opaque-black path of JWildfire's LogScaleCalculator,
+// Opaque-black path of JWildfire's LogScaleCalculator,
 // LogDensityFilter and GammaCorrectionFilter, at the default color settings.
-fn shade(scene: &Scene, width: usize, height: usize, quality: usize, raster: &[Bin]) -> Vec<u8> {
+fn shade(
+    scene: &Scene,
+    width: usize,
+    height: usize,
+    quality: usize,
+    raster: &[Bin],
+    filter: &Kernel,
+) -> Vec<u8> {
     const WHITE_LEVEL: f64 = 220.0;
     const LOW_DENSITY_BRIGHTNESS: f64 = 0.24;
     let ppu = pixels_per_unit(scene, width, height);
@@ -224,43 +248,79 @@ fn shade(scene: &Scene, width: usize, height: usize, quality: usize, raster: &[B
     let gamma = 1.0 / scene.gamma;
     let threshold = scene.threshold;
     let threshold_scale = threshold.powf(gamma - 1.0);
-    let mut pixels = Vec::with_capacity(raster.len() * 3);
-    for bin in raster {
+    let log_scale = |count: u32| {
+        let count = f64::from(count);
+        (k1 * (1.0 + count * k2).log10() + glow / (count + 1.0)) / (WHITE_LEVEL * count)
+    };
+    let scales: [f64; 513] = std::array::from_fn(|i| log_scale(i as u32));
+    let border = filter.border();
+    let stride = width + 2 * border;
+    let smoothing = Kernel::gaussian();
+    let sample = |(px, py, weight): (usize, usize, f64)| {
+        if px >= stride || py >= height + 2 * border {
+            return None;
+        }
+        let bin = raster[py * stride + px];
         if bin.count == 0 {
-            pixels.extend([0; 3]);
-            continue;
+            return None;
         }
-        let count = f64::from(bin.count);
-        let log_scale =
-            (k1 * (1.0 + count * k2).log10() + glow / (count + 1.0)) / (WHITE_LEVEL * count);
-        let intensity = log_scale * count * WHITE_LEVEL;
-        if intensity <= 0.0 {
-            pixels.extend([0; 3]);
-            continue;
+        let scale = scales
+            .get(bin.count as usize)
+            .copied()
+            .unwrap_or_else(|| log_scale(bin.count));
+        Some((weight, scale, bin))
+    };
+    let mut pixels = Vec::with_capacity(width * height * 3);
+    for y in 0..height {
+        for x in 0..width {
+            let mut rgb = [0.0; 3];
+            for (weight, scale, bin) in filter.taps(x, y, border).filter_map(sample) {
+                for (channel, sum) in rgb.iter_mut().zip(bin.rgb) {
+                    *channel += weight * scale * f64::from(sum);
+                }
+            }
+            // Despite its name, Java classifies Mitchell Smooth as sharpening.
+            // It uses the Mitchell taps for color and Gaussian taps for intensity.
+            let intensity = if filter.size == 1 {
+                filter
+                    .taps(x, y, border)
+                    .filter_map(sample)
+                    .map(|(_, scale, bin)| scale * f64::from(bin.count) * WHITE_LEVEL)
+                    .sum::<f64>()
+            } else {
+                smoothing
+                    .taps(x, y, border)
+                    .filter_map(sample)
+                    .map(|(weight, scale, bin)| {
+                        (weight * WHITE_LEVEL) * (scale * f64::from(bin.count))
+                    })
+                    .sum::<f64>()
+            };
+            if intensity <= 0.0 {
+                pixels.extend([0; 3]);
+                continue;
+            }
+            let power = intensity.powf(gamma);
+            let alpha = if intensity <= threshold {
+                let fraction = intensity / threshold;
+                (1.0 - fraction) * intensity * threshold_scale + fraction * power
+            } else {
+                power
+            };
+            let gamma_scale = 256.0 * alpha / intensity;
+            pixels.extend(rgb.map(|channel| (gamma_scale * channel.max(0.0) + 0.5) as u8));
         }
-        let power = intensity.powf(gamma);
-        let alpha = if intensity <= threshold {
-            let fraction = intensity / threshold;
-            (1.0 - fraction) * intensity * threshold_scale + fraction * power
-        } else {
-            power
-        };
-        let gamma_scale = 256.0 * alpha / intensity;
-        pixels.extend(
-            bin.rgb
-                .map(|sum| (gamma_scale * (log_scale * f64::from(sum)) + 0.5) as u8),
-        );
     }
     pixels
 }
 
-fn dimensions(w: usize, h: usize, q: usize) -> Result<(usize, usize), String> {
+fn sample_budget(w: usize, h: usize, q: usize) -> Result<usize, String> {
     if !(1..=4096).contains(&w) || !(1..=4096).contains(&h) || q == 0 {
         return Err("width and height must be 1..=4096; quality must be positive".into());
     }
     let count = w * h;
     match count.checked_mul(q) {
-        Some(samples) if samples <= 200_000_000 => Ok((count, samples)),
+        Some(samples) if samples <= 200_000_000 => Ok(samples),
         _ => Err("preview sample budget exceeds 200,000,000".into()),
     }
 }

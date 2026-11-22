@@ -64,28 +64,33 @@ def capture(source):
         "--", str(export), str(work),
     ], cwd=oracle.ROOT, check=True, timeout=600)
 
-    image = work / "image"
-    image.mkdir()
     flame = export / "resources/flames/TINA0010.flame"
     example = ["cargo", "run", "--release", "--locked", "-p", "rwildfire-cpu",
                "--example", "check_java_image", "--"]
-    subprocess.run([*example, "capture", str(flame), str(image)],
-                   cwd=oracle.ROOT, check=True, timeout=600)
-    subprocess.run([
-        jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
-        "-cp", runtime_cp, "ImageV1Probe", str(flame),
-        str(image / "raster.bin"), str(image / "java.png"),
-    ], cwd=oracle.ROOT, check=True, timeout=120)
-    subprocess.run([*example, "compare", str(image)], cwd=oracle.ROOT, check=True, timeout=120)
-    mutant = subprocess.run([*example, "mutate", str(image)], cwd=oracle.ROOT, timeout=120)
-    if mutant.returncode != 1:
-        raise oracle.OracleError(f"image negative control exited {mutant.returncode}, expected 1")
-    provenance["image"] = {
-        "scene": "TINA0010",
-        "probe_sha256": oracle.sha256_file(image_probe),
-        **{name: oracle.sha256_file(image / name)
-           for name in ("raster.bin", "java.png", "rust.png", "diff.png", "mutant-diff.png")},
-    }
+    java = [jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
+            "-cp", runtime_cp, "ImageV1Probe", str(flame)]
+    provenance["image"] = {"scene": "TINA0010", "probe_sha256": oracle.sha256_file(image_probe)}
+    for mode in ("unfiltered", "filtered"):
+        image = work / mode
+        image.mkdir()
+        print(f"TINA0010 {mode} image:", flush=True)
+        subprocess.run([*example, mode, str(flame), str(image)],
+                       cwd=oracle.ROOT, check=True, timeout=600)
+        raster = str(image / "raster.bin")
+        subprocess.run([*java, raster, str(image / "java.png"), mode],
+                       cwd=oracle.ROOT, check=True, timeout=120)
+        subprocess.run([*example, "compare", str(image)], cwd=oracle.ROOT, check=True, timeout=120)
+        control = "mutate"
+        outputs = ["raster.bin", "java.png", "rust.png", "diff.png", "mutant-diff.png"]
+        if mode == "filtered":
+            subprocess.run([*java, raster, str(image / "java-omitted.png"), "omit"],
+                           cwd=oracle.ROOT, check=True, timeout=120)
+            control = "omit"
+            outputs[-1:] = ["java-omitted.png", "omitted-diff.png"]
+        mutant = subprocess.run([*example, control, str(image)], cwd=oracle.ROOT, timeout=120)
+        if mutant.returncode != 1:
+            raise oracle.OracleError(f"image {control} control exited {mutant.returncode}, expected 1")
+        provenance["image"][mode] = {name: oracle.sha256_file(image / name) for name in outputs}
     (work / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
 

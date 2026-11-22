@@ -10,6 +10,7 @@ pub struct Scene {
     pub brightness: f64,
     pub gamma: f64,
     pub threshold: f64,
+    pub filter_radius: f64,
     pub transforms: Vec<Transform>,
     pub palette: [[u8; 3]; 256],
 }
@@ -83,7 +84,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     if n.tag_name().name() != "flame" {
         return Err("expected a single flame element".into());
     }
-    // Quality is a CLI setting; legacy filter and estimator fields are not implemented.
+    // Quality is a CLI setting; legacy estimator fields are not implemented.
     allowed(
         n,
         &[
@@ -132,6 +133,10 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let brightness = number(n, "brightness", 4.)?;
     let gamma = number(n, "gamma", 4.)?;
     let threshold = number(n, "gamma_threshold", 0.04)?;
+    let filter_radius = number(n, "filter", 0.0)?;
+    if filter_radius != 0.0 && filter_radius != 1.0 {
+        return Err("only filter radii 0 and 1 are supported".into());
+    }
     if !(1..=2048).contains(&width)
         || !(1..=2048).contains(&height)
         || center.iter().any(|v| !v.is_finite())
@@ -221,6 +226,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         brightness,
         gamma,
         threshold,
+        filter_radius,
         transforms,
         palette: palette.ok_or("missing palette")?,
     })
