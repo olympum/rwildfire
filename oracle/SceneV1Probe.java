@@ -24,7 +24,7 @@ public class SceneV1Probe {
     layer.refreshModWeightTables(ctx);
     FlameRendererView view = new FlameRendererView(Stereo3dEye.UNSPECIFIED, f, rng, 0, w, h, w, h, ctx, null);
     PrintWriter out = new PrintWriter(args[1], StandardCharsets.UTF_8.name());
-    out.printf(Locale.ROOT,"scene %d %d %s %s %s %s %s %s %s%n",f.getWidth(),f.getHeight(),f.getPixelsPerUnit(),f.getCamZoom(),f.getCentreX(),f.getCentreY(),f.getBrightness(),f.getGamma(),f.getGammaThreshold());
+    out.printf(Locale.ROOT,"scene %d %d %s %s %s %s %s %s %s %s%n",f.getWidth(),f.getHeight(),f.getPixelsPerUnit(),f.getCamZoom(),f.getCentreX(),f.getCentreY(),f.getBrightness(),f.getGamma(),f.getGammaThreshold(),f.getCamRoll());
     for (XForm x : xf) {
       double lin=0, sphere=0;
       for (Variation v: x.getVariations()) {

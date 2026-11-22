@@ -30,11 +30,11 @@ fn verify(xml: &str, reference: &str) {
             sc.brightness,
             sc.gamma,
             sc.threshold,
+            sc.roll_degrees,
         ],
         &row("scene")[1..],
         "scene",
     );
-    assert_eq!(sc.transforms.len(), 3);
     for (i, t) in sc.transforms.iter().enumerate() {
         let [a, b, c, d, e, f] = t.affine;
         exact(
@@ -102,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let source = std::path::Path::new(source).join("resources/flames");
     let captures = std::path::Path::new(captures);
-    for name in ["TINA0010", "TINA0004"] {
+    for name in ["TINA0010", "TINA0004", "TINA0006", "TINA0008"] {
         let xml = std::fs::read_to_string(source.join(format!("{name}.flame")))?;
         let trace = std::fs::read_to_string(captures.join(format!("{name}.txt")))?;
         println!("{name}: comparing Rust against fresh Java scene trace");

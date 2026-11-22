@@ -5,6 +5,7 @@ pub struct Scene {
     pub height: usize,
     pub ppu: f64,
     pub zoom: f64,
+    pub roll_degrees: f64,
     pub center: [f64; 2],
     pub brightness: f64,
     pub gamma: f64,
@@ -110,7 +111,6 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         ],
     )?;
     for (key, expected) in [
-        ("rotate", 0.0),
         ("oversample", 1.0),
         ("temporal_samples", 1.0),
         ("cam_pitch", 0.0),
@@ -128,6 +128,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let center = vector::<f64, 2>(n, "center")?;
     let ppu = finite(&required(n, "scale")?, "scale")?;
     let zoom = number(n, "cam_zoom", 1.)?;
+    let roll_degrees = number(n, "rotate", 0.)?;
     let brightness = number(n, "brightness", 4.)?;
     let gamma = number(n, "gamma", 4.)?;
     let threshold = number(n, "gamma_threshold", 0.04)?;
@@ -140,6 +141,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         || gamma <= 0.
         || threshold <= 0.
         || !(ppu * zoom).is_finite()
+        || !(roll_degrees * std::f64::consts::PI).is_finite()
     {
         return Err("invalid size, camera or tone settings".into());
     }
@@ -214,6 +216,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         height,
         ppu,
         zoom,
+        roll_degrees,
         center,
         brightness,
         gamma,

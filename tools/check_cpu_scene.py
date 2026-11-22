@@ -49,7 +49,7 @@ def capture(source):
         "seed": 741103597,
         "scenes": {},
     }
-    for name in ("TINA0010", "TINA0004"):
+    for name in ("TINA0010", "TINA0004", "TINA0006", "TINA0008"):
         scene = export / "resources/flames" / (name + ".flame")
         trace = work / (name + ".txt")
         with (work / (name + ".stdout")).open("wb") as stdout, (work / (name + ".stderr")).open("wb") as stderr:
