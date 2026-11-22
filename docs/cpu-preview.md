@@ -4,7 +4,8 @@
 
 The preview reads original flame XML directly. It supports legacy single-layer
 2D scenes with an RGB palette, camera roll, weighted XY transforms, and the
-`linear3D`, `spherical3D`, and `waves` variations. For `waves` angles above
+`linear3D`, `spherical3D`, `waves`, and `bubble`. The sampler carries Z between
+transforms, but the supported camera still projects only XY. For `waves` angles above
 about 12,739 radians in magnitude, Rust uses its standard sine instead of
 Java’s large-angle reduction. Small or zero affine translations can reach
 that range. Mixed transforms with three active variations use a fixed Rust
@@ -16,7 +17,7 @@ keeps the prior unfiltered preview behavior; the missing-attribute case does
 not reproduce Java’s preference default. Other radii, kernels, oversampling,
 and adaptive antialiasing are not supported.
 
-The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011 and TINA0021
+The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, and TINA0009
 from the validated JWildfire 9.20 source export, not copies in this repository. To run the scene
 check separately with JDK 8 and a clean checkout of the pinned revision:
 
@@ -25,9 +26,9 @@ check separately with JDK 8 and a clean checkout of the pinned revision:
 The probe uses Java model decoding, transform tables, point transforms, view
 projection and raster accumulation. It compares decoded values, 256 points and
 all occupied bins in that window per scene, without filtering or antialiasing.
-For radius-1 TINA0010, TINA0011, and TINA0021, Java and Rust independently
-generate seeded padded rasters at each scene’s original quality (100, 3, and
-100 iterations per padded bin, respectively). The gate compares every bin’s
+For radius-1 TINA0010, TINA0011, TINA0021, and TINA0009, Java and Rust independently
+generate seeded padded rasters at each scene’s original quality (100, 3, 100, and
+3 iterations per padded bin, respectively). The gate compares every bin’s
 count and float sums bit-for-bit, then compares every decoded RGB pixel.
 For each scene it rejects a modified bin and checks that bypassing the filter
 changes the image. The unfiltered TINA0010 path still uses a shared raster

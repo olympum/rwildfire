@@ -26,14 +26,15 @@ public class SceneV1Probe {
     PrintWriter out = new PrintWriter(args[1], StandardCharsets.UTF_8.name());
     out.printf(Locale.ROOT,"scene %d %d %s %s %s %s %s %s %s %s%n",f.getWidth(),f.getHeight(),f.getPixelsPerUnit(),f.getCamZoom(),f.getCentreX(),f.getCentreY(),f.getBrightness(),f.getGamma(),f.getGammaThreshold(),f.getCamRoll());
     for (XForm x : xf) {
-      double lin=0, sphere=0, waves=0;
+      double lin=0, sphere=0, waves=0, bubble=0;
       for (Variation v: x.getVariations()) {
         if (v.getFunc().getName().equals("linear3D")) lin=v.getAmount();
         else if (v.getFunc().getName().equals("spherical3D")) sphere=v.getAmount();
         else if (v.getFunc().getName().equals("waves")) waves=v.getAmount();
+        else if (v.getFunc().getName().equals("bubble")) bubble=v.getAmount();
         else throw new AssertionError(v.getFunc().getName());
       }
-      out.printf(Locale.ROOT,"xform %s %s %s %s %s %s %s %s %s %s %s %s%n",x.getWeight(),x.getColor(),x.getColorSymmetry(),x.getXYCoeff00(),x.getXYCoeff01(),x.getXYCoeff10(),x.getXYCoeff11(),x.getXYCoeff20(),x.getXYCoeff21(),lin,sphere,waves);
+      out.printf(Locale.ROOT,"xform %s %s %s %s %s %s %s %s %s %s %s %s %s%n",x.getWeight(),x.getColor(),x.getColorSymmetry(),x.getXYCoeff00(),x.getXYCoeff01(),x.getXYCoeff10(),x.getXYCoeff11(),x.getXYCoeff20(),x.getXYCoeff21(),lin,sphere,waves,bubble);
     }
     for(int i=0;i<256;i++) { RGBColor c=layer.getPalette().getColor(i); out.printf(Locale.ROOT,"palette %d %d %d%n",c.getRed(),c.getGreen(),c.getBlue()); }
     XYZPoint p=new XYZPoint(), aff=new XYZPoint(), var=new XYZPoint();
@@ -55,7 +56,7 @@ public class SceneV1Probe {
         px=(int)(view.getBws()*prj.x+0.5); py=(int)(view.getBhs()*prj.y+0.5);
         if(px<0 || px>=w || py<0 || py>=h) {px=-1;py=-1;}
       }
-      out.printf(Locale.ROOT,"point %d %s %s %s %d %d%n",xf.indexOf(current),p.x,p.y,p.color,px,py);
+      out.printf(Locale.ROOT,"point %d %s %s %s %s %d %d%n",xf.indexOf(current),p.x,p.y,p.z,p.color,px,py);
       if(px>=0) {
         s.screenX=px; s.screenY=py; s.r=p.redColor; s.g=p.greenColor; s.b=p.blueColor;
         raster.addSamples(samples,1); bins.add(py*w+px);
