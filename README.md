@@ -34,6 +34,10 @@ A pass validates only the cases supplied. The initial Java-to-Java checks establ
 
 The [parity contract](docs/adr/0001-parity-evidence.md) describes how we’ll extend the port beyond the first CPU scenes.
 
+## Contributing
+
+See the [contribution guide](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md), and [security policy](SECURITY.md).
+
 ## License and provenance
 
 Original rwildfire code is licensed under GPL-3.0-or-later. Upstream JWildfire and third-party components retain their own notices and terms; this repository does not relicense them. The Java reference remains an external, pinned checkout rather than vendored source or binaries. See [source attribution and distribution scope](NOTICE.md). Binary or asset bundles need a separate licensing review before publication.
