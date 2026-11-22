@@ -73,7 +73,7 @@ def capture(source):
         "seed": 741103597,
         "scenes": {},
     }
-    for name in ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013"):
+    for name in ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016"):
         scene = export / "resources/flames" / (name + ".flame")
         trace = work / (name + ".txt")
         with (work / (name + ".stdout")).open("wb") as stdout, (work / (name + ".stderr")).open("wb") as stderr:
@@ -100,6 +100,7 @@ def capture(source):
         ("TINA0009", (932, 662, 3), "filtered"),
         ("TINA0018", (932, 662, 3), "filtered"),
         ("TINA0013", (932, 662, 100), "filtered"),
+        ("TINA0016", (932, 662, 3), "filtered"),
     ):
         flame = export / "resources/flames" / (name + ".flame")
         provenance["image"].setdefault(name, {})

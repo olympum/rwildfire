@@ -84,6 +84,11 @@ impl Point {
             x += (ay / radius + crate::fast_sin::sin(radius)) * scale;
             y += (ax / radius - crate::fast_sin::cos(radius)) * scale;
         }
+        if t.pdj != 0.0 {
+            // Legacy defaults are a=1, b=2, c=3, d=4; preserve Z is off.
+            x += t.pdj * (crate::fast_sin::sin(ay) - crate::fast_sin::cos(2.0 * ax));
+            y += t.pdj * (crate::fast_sin::sin(3.0 * ax) - crate::fast_sin::cos(4.0 * ay));
+        }
         self.x = x;
         self.y = y;
         self.z = z;
