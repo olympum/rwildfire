@@ -52,6 +52,7 @@ fn verify(xml: &str, reference: &str) {
                 t.spherical,
                 t.waves,
                 t.bubble,
+                t.spiral,
             ],
             &row("xform")[1..],
             &format!("xform {i}"),
@@ -107,6 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let captures = std::path::Path::new(captures);
     for name in [
         "TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009",
+        "TINA0018", "TINA0013",
     ] {
         let xml = std::fs::read_to_string(source.join(format!("{name}.flame")))?;
         let trace = std::fs::read_to_string(captures.join(format!("{name}.txt")))?;

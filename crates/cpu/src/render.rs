@@ -78,6 +78,12 @@ impl Point {
             y += scale * ay;
             z += t.bubble * (2.0 / radius - 1.0);
         }
+        if t.spiral != 0.0 {
+            let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay) + 1.0e-300;
+            let scale = t.spiral / radius;
+            x += (ay / radius + crate::fast_sin::sin(radius)) * scale;
+            y += (ax / radius - crate::fast_sin::cos(radius)) * scale;
+        }
         self.x = x;
         self.y = y;
         self.z = z;
