@@ -4,7 +4,7 @@
 
 The preview reads original flame XML directly. It supports legacy single-layer
 2D scenes with an RGB palette, camera roll, weighted XY transforms, and the
-`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, and `disc` variations. The `pdj` preview supports
+`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, and `hemisphere` variations. The `pdj` preview supports
 only the legacy defaults `(1, 2, 3, 4)`, not explicit parameters. The sampler carries Z between
 transforms, but the supported camera still projects only XY. For trigonometric arguments in `waves`, `spiral`, `pdj`, or `disc` above
 about 12,739 radians in magnitude, Rust uses its standard trigonometric functions instead of
@@ -18,7 +18,7 @@ keeps the prior unfiltered preview behavior; the missing-attribute case does
 not reproduce Java’s preference default. Other radii, kernels, oversampling,
 and adaptive antialiasing are not supported.
 
-The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, and TINA0003
+The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, TINA0003, and TINA0001
 from the validated JWildfire 9.20 source export, not copies in this repository. To run the scene
 check separately with JDK 8 and a clean checkout of the pinned revision:
 
