@@ -19,15 +19,40 @@ pub struct Transform {
     pub color: f64,
     pub symmetry: f64,
     pub affine: [f64; 6],
-    pub linear: f64,
-    pub spherical: f64,
-    pub waves: f64,
-    pub bubble: f64,
-    pub spiral: f64,
-    pub pdj: f64,
-    pub disc: f64,
-    pub hemisphere: f64,
+    pub variations: Vec<Variation>,
 }
+pub struct Variation {
+    pub amount: f64,
+    pub kind: VariationKind,
+}
+
+#[derive(Clone, Copy)]
+pub enum VariationKind {
+    Linear3D,
+    Spherical3D,
+    Waves,
+    Bubble,
+    Spiral,
+    Pdj { a: f64, b: f64, c: f64, d: f64 },
+    Disc,
+    Hemisphere,
+}
+
+impl VariationKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Linear3D => "linear3D",
+            Self::Spherical3D => "spherical3D",
+            Self::Waves => "waves",
+            Self::Bubble => "bubble",
+            Self::Spiral => "spiral",
+            Self::Pdj { .. } => "pdj",
+            Self::Disc => "disc",
+            Self::Hemisphere => "hemisphere",
+        }
+    }
+}
+
 type Element<'a, 'i> = Node<'a, 'i>;
 fn required<'i>(n: Element<'_, 'i>, key: &str) -> Result<String, String> {
     n.attribute(key)
@@ -185,6 +210,10 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "bubble",
                 "spiral",
                 "pdj",
+                "pdj_a",
+                "pdj_b",
+                "pdj_c",
+                "pdj_d",
                 "disc",
                 "hemisphere",
             ],
@@ -205,26 +234,43 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         let color = finite(&required(c, "color")?, "color")?;
         let symmetry = number(c, "symmetry", 0.)?;
         let affine = vector::<f64, 6>(c, "coefs")?;
-        let linear = number(c, "linear3D", 0.)?;
-        let spherical = number(c, "spherical3D", 0.)?;
-        let waves = number(c, "waves", 0.)?;
-        let bubble = number(c, "bubble", 0.)?;
-        let spiral = number(c, "spiral", 0.)?;
-        let pdj = number(c, "pdj", 0.)?;
-        let disc = number(c, "disc", 0.)?;
-        let hemisphere = number(c, "hemisphere", 0.)?;
+        if c.attribute("pdj").is_none()
+            && ["pdj_a", "pdj_b", "pdj_c", "pdj_d"]
+                .iter()
+                .any(|key| c.attribute(*key).is_some())
+        {
+            return Err("pdj parameters require a pdj variation".into());
+        }
+        // AbstractFlameReader inserts variations as it walks XML attributes;
+        // XForm evaluates the supported priority-zero variations in that order.
+        let mut variations = Vec::new();
+        for attr in c.attributes() {
+            let kind = match attr.name() {
+                "linear3D" => VariationKind::Linear3D,
+                "spherical3D" => VariationKind::Spherical3D,
+                "waves" => VariationKind::Waves,
+                "bubble" => VariationKind::Bubble,
+                "spiral" => VariationKind::Spiral,
+                "pdj" => VariationKind::Pdj {
+                    a: number(c, "pdj_a", 1.0)?,
+                    b: number(c, "pdj_b", 2.0)?,
+                    c: number(c, "pdj_c", 3.0)?,
+                    d: number(c, "pdj_d", 4.0)?,
+                },
+                "disc" => VariationKind::Disc,
+                "hemisphere" => VariationKind::Hemisphere,
+                _ => continue,
+            };
+            variations.push(Variation {
+                kind,
+                amount: finite(attr.value(), attr.name())?,
+            });
+        }
         if weight < 0.
             || !(0.0..=1.0).contains(&color)
             || !(-1.0..=1.0).contains(&symmetry)
             || affine.iter().any(|v| !v.is_finite())
-            || (linear == 0.
-                && spherical == 0.
-                && waves == 0.
-                && bubble == 0.
-                && spiral == 0.
-                && pdj == 0.
-                && disc == 0.
-                && hemisphere == 0.)
+            || variations.iter().all(|v| v.amount == 0.0)
         {
             return Err("invalid xform weight, color, coefficients or variation amounts".into());
         }
@@ -233,14 +279,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             color,
             symmetry,
             affine,
-            linear,
-            spherical,
-            waves,
-            bubble,
-            spiral,
-            pdj,
-            disc,
-            hemisphere,
+            variations,
         });
     }
     let total = transforms.iter().map(|t| t.weight).sum::<f64>();

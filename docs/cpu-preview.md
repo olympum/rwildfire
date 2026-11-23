@@ -4,13 +4,12 @@
 
 The preview reads original flame XML directly. It supports legacy single-layer
 2D scenes with an RGB palette, camera roll, weighted XY transforms, and the
-`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, and `hemisphere` variations. The `pdj` preview supports
-only the legacy defaults `(1, 2, 3, 4)`, not explicit parameters. The sampler carries Z between
+`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, and `hemisphere` variations. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
 transforms, but the supported camera still projects only XY. For trigonometric arguments in `waves`, `spiral`, `pdj`, or `disc` above
 about 12,739 radians in magnitude, Rust uses its standard trigonometric functions instead of
 Java’s large-angle reduction. For `waves`, small or zero affine translations can reach that range; for
-`spiral`, the argument is the length of the affine XY point. Mixed transforms with three or more active variations use a fixed Rust
-accumulation order; parity for those combinations is unverified. The legacy XML `rotate` value is read in degrees, as in JWildfire.
+`spiral`, the argument is the length of the affine XY point. Supported variations accumulate in the order JWildfire loads them from
+legacy XML. Priority overrides and indexed variation names remain unsupported. The legacy XML `rotate` value is read in degrees, as in JWildfire.
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
 intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute
@@ -27,6 +26,7 @@ check separately with JDK 8 and a clean checkout of the pinned revision:
 The probe uses Java model decoding, transform tables, point transforms, view
 projection and raster accumulation. It compares decoded values, 256 points and
 all occupied bins in that window per scene, without filtering or antialiasing.
+A synthetic trace also checks a three-variation transform and explicit PDJ parameters.
 For every scene listed above, Java and Rust independently generate seeded
 padded rasters at the original quality with radius-1 filtering. The gate compares every bin’s
 count and float sums bit-for-bit, then compares every decoded RGB pixel.
