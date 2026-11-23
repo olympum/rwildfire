@@ -96,6 +96,12 @@ impl Point {
             x += crate::fast_sin::sin(radius_pi) * scale;
             y += crate::fast_sin::cos(radius_pi) * scale;
         }
+        if t.hemisphere != 0.0 {
+            let r = t.hemisphere / crate::fast_sqrt::sqrt(ax * ax + ay * ay + 1.0);
+            x += ax * r;
+            y += ay * r;
+            z += r;
+        }
         self.x = x;
         self.y = y;
         self.z = z;
