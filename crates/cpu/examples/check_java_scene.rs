@@ -1,4 +1,7 @@
-use rwildfire_cpu::{scene::parse, Bin, Sampler};
+use rwildfire_cpu::{
+    scene::{parse, VariationKind},
+    Bin, Sampler,
+};
 use std::collections::BTreeMap;
 
 fn exact(got: &[f64], fields: &[&str], context: &str) {
@@ -38,28 +41,24 @@ fn verify(xml: &str, reference: &str) {
     for (i, t) in sc.transforms.iter().enumerate() {
         let [a, b, c, d, e, f] = t.affine;
         exact(
-            &[
-                t.weight,
-                t.color,
-                t.symmetry,
-                a,
-                b,
-                c,
-                d,
-                e,
-                f,
-                t.linear,
-                t.spherical,
-                t.waves,
-                t.bubble,
-                t.spiral,
-                t.pdj,
-                t.disc,
-                t.hemisphere,
-            ],
+            &[t.weight, t.color, t.symmetry, a, b, c, d, e, f],
             &row("xform")[1..],
             &format!("xform {i}"),
         );
+        for v in &t.variations {
+            let fields = row("variation");
+            assert_eq!(fields[1], v.kind.name(), "xform {i} variation order");
+            let values = match v.kind {
+                VariationKind::Pdj { a, b, c, d } => vec![v.amount, a, b, c, d],
+                _ => vec![v.amount],
+            };
+            exact(
+                &values,
+                &fields[2..],
+                &format!("xform {i} {}", v.kind.name()),
+            );
+        }
+        assert_eq!(row("end-xform").len(), 1);
     }
     for (i, rgb) in sc.palette.iter().enumerate() {
         exact(
@@ -104,8 +103,8 @@ fn verify(xml: &str, reference: &str) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let paths: Vec<_> = std::env::args_os().skip(1).collect();
-    let [source, captures] = paths.as_slice() else {
-        return Err("usage: check_java_scene UPSTREAM_EXPORT CAPTURE_DIR".into());
+    let [source, captures, synthetic] = paths.as_slice() else {
+        return Err("usage: check_java_scene UPSTREAM_EXPORT CAPTURE_DIR SYNTHETIC_FLAME".into());
     };
     let source = std::path::Path::new(source).join("resources/flames");
     let captures = std::path::Path::new(captures);
@@ -119,5 +118,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         verify(&xml, &trace);
         println!("{name}: model, 256 points and occupied bins match exactly");
     }
+    let xml = std::fs::read_to_string(synthetic)?;
+    let trace = std::fs::read_to_string(captures.join("ordered-variations.txt"))?;
+    println!("ordered-variations: comparing Rust against fresh Java scene trace");
+    verify(&xml, &trace);
+    println!("ordered-variations: model, 256 points and occupied bins match exactly");
     Ok(())
 }

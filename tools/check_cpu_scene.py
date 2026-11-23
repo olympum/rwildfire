@@ -73,8 +73,10 @@ def capture(source):
         "seed": 741103597,
         "scenes": {},
     }
-    for name in ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001"):
-        scene = export / "resources/flames" / (name + ".flame")
+    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001")
+    scenes = [(name, export / "resources/flames" / (name + ".flame")) for name in names]
+    synthetic = oracle.ROOT / "fixtures" / "ordered-variations.flame"
+    for name, scene in [*scenes, (synthetic.stem, synthetic)]:
         trace = work / (name + ".txt")
         with (work / (name + ".stdout")).open("wb") as stdout, (work / (name + ".stderr")).open("wb") as stderr:
             subprocess.run([
@@ -84,7 +86,7 @@ def capture(source):
         provenance["scenes"][name] = {"input_sha256": oracle.sha256_file(scene), "trace_sha256": oracle.sha256_file(trace)}
     subprocess.run([
         "cargo", "run", "--locked", "-p", "rwildfire-cpu", "--example", "check_java_scene",
-        "--", str(export), str(work),
+        "--", str(export), str(work), str(synthetic),
     ], cwd=oracle.ROOT, check=True, timeout=600)
 
     example = ["cargo", "run", "--release", "--locked", "-p", "rwildfire-cpu",

@@ -26,23 +26,21 @@ public class SceneV1Probe {
     PrintWriter out = new PrintWriter(args[1], StandardCharsets.UTF_8.name());
     out.printf(Locale.ROOT,"scene %d %d %s %s %s %s %s %s %s %s%n",f.getWidth(),f.getHeight(),f.getPixelsPerUnit(),f.getCamZoom(),f.getCentreX(),f.getCentreY(),f.getBrightness(),f.getGamma(),f.getGammaThreshold(),f.getCamRoll());
     for (XForm x : xf) {
-      double lin=0, sphere=0, waves=0, bubble=0, spiral=0, pdj=0, disc=0, hemisphere=0;
-      for (Variation v: x.getVariations()) {
-        if (v.getFunc().getName().equals("linear3D")) lin=v.getAmount();
-        else if (v.getFunc().getName().equals("spherical3D")) sphere=v.getAmount();
-        else if (v.getFunc().getName().equals("waves")) waves=v.getAmount();
-        else if (v.getFunc().getName().equals("bubble")) bubble=v.getAmount();
-        else if (v.getFunc().getName().equals("spiral")) spiral=v.getAmount();
-        else if (v.getFunc().getName().equals("pdj")) {
-          if (!Arrays.equals(v.getFunc().getParameterValues(), new Object[]{1.0, 2.0, 3.0, 4.0})) {
-            throw new AssertionError("expected legacy pdj defaults");
-          }
-          pdj=v.getAmount();
-        } else if (v.getFunc().getName().equals("disc")) disc=v.getAmount();
-        else if (v.getFunc().getName().equals("hemisphere")) hemisphere=v.getAmount();
-        else throw new AssertionError(v.getFunc().getName());
+      out.printf(Locale.ROOT,"xform %s %s %s %s %s %s %s %s %s%n",x.getWeight(),x.getColor(),x.getColorSymmetry(),x.getXYCoeff00(),x.getXYCoeff01(),x.getXYCoeff10(),x.getXYCoeff11(),x.getXYCoeff20(),x.getXYCoeff21());
+      for (Variation v : x.getVariations()) {
+        if (v.getPriority() != 0 || v.getFunc().getPriority() != 0) {
+          throw new AssertionError("expected ordinary variation");
+        }
+        String name = v.getFunc().getName();
+        out.printf(Locale.ROOT, "variation %s %s", name, v.getAmount());
+        if (name.equals("pdj")) {
+          Object[] params = v.getFunc().getParameterValues();
+          if (params.length != 4) throw new AssertionError("expected four PDJ parameters");
+          for (Object param : params) out.print(" " + param);
+        }
+        out.println();
       }
-      out.printf(Locale.ROOT,"xform %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s%n",x.getWeight(),x.getColor(),x.getColorSymmetry(),x.getXYCoeff00(),x.getXYCoeff01(),x.getXYCoeff10(),x.getXYCoeff11(),x.getXYCoeff20(),x.getXYCoeff21(),lin,sphere,waves,bubble,spiral,pdj,disc,hemisphere);
+      out.println("end-xform");
     }
     for(int i=0;i<256;i++) { RGBColor c=layer.getPalette().getColor(i); out.printf(Locale.ROOT,"palette %d %d %d%n",c.getRed(),c.getGreen(),c.getBlue()); }
     XYZPoint p=new XYZPoint(), aff=new XYZPoint(), var=new XYZPoint();

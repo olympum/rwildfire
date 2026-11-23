@@ -2,7 +2,7 @@
 // This Rust port is distributed under GPL-3.0-or-later.
 use crate::{
     filter::Kernel,
-    scene::{Scene, Transform},
+    scene::{Scene, Transform, VariationKind},
 };
 
 const TABLE_SIZE: usize = 1024;
@@ -56,51 +56,61 @@ impl Point {
         let mut x = 0.0;
         let mut y = 0.0;
         let mut z = 0.0;
-        if t.linear != 0.0 {
-            x += t.linear * ax;
-            y += t.linear * ay;
-            z += t.linear * self.z;
-        }
-        if t.spherical != 0.0 {
-            let r = t.spherical / (ax * ax + ay * ay + self.z * self.z + 1.0e-300);
-            x += ax * r;
-            y += ay * r;
-            z += self.z * r;
-        }
-        if t.waves != 0.0 {
-            x += t.waves * (ax + d * crate::fast_sin::sin(ay / (tx * tx + 1.0e-300)));
-            y += t.waves * (ay + e * crate::fast_sin::sin(ax / (ty * ty + 1.0e-300)));
-        }
-        if t.bubble != 0.0 {
-            let radius = (ax * ax + ay * ay) / 4.0 + 1.0;
-            let scale = t.bubble / radius;
-            x += scale * ax;
-            y += scale * ay;
-            z += t.bubble * (2.0 / radius - 1.0);
-        }
-        if t.spiral != 0.0 {
-            let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay) + 1.0e-300;
-            let scale = t.spiral / radius;
-            x += (ay / radius + crate::fast_sin::sin(radius)) * scale;
-            y += (ax / radius - crate::fast_sin::cos(radius)) * scale;
-        }
-        if t.pdj != 0.0 {
-            // Legacy defaults are a=1, b=2, c=3, d=4; preserve Z is off.
-            x += t.pdj * (crate::fast_sin::sin(ay) - crate::fast_sin::cos(2.0 * ax));
-            y += t.pdj * (crate::fast_sin::sin(3.0 * ax) - crate::fast_sin::cos(4.0 * ay));
-        }
-        if t.disc != 0.0 {
-            let radius_pi = std::f64::consts::PI * crate::fast_sqrt::sqrt(ax * ax + ay * ay);
-            // JWildfire getPrecalcAtan takes the affine X coordinate first.
-            let scale = t.disc * crate::fast_atan::atan2(ax, ay) / std::f64::consts::PI;
-            x += crate::fast_sin::sin(radius_pi) * scale;
-            y += crate::fast_sin::cos(radius_pi) * scale;
-        }
-        if t.hemisphere != 0.0 {
-            let r = t.hemisphere / crate::fast_sqrt::sqrt(ax * ax + ay * ay + 1.0);
-            x += ax * r;
-            y += ay * r;
-            z += r;
+        for variation in &t.variations {
+            let amount = variation.amount;
+            match variation.kind {
+                VariationKind::Linear3D => {
+                    x += amount * ax;
+                    y += amount * ay;
+                    z += amount * self.z;
+                }
+                VariationKind::Spherical3D => {
+                    let r = amount / (ax * ax + ay * ay + self.z * self.z + 1.0e-300);
+                    x += ax * r;
+                    y += ay * r;
+                    z += self.z * r;
+                }
+                VariationKind::Waves => {
+                    x += amount * (ax + d * crate::fast_sin::sin(ay / (tx * tx + 1.0e-300)));
+                    y += amount * (ay + e * crate::fast_sin::sin(ax / (ty * ty + 1.0e-300)));
+                }
+                VariationKind::Bubble => {
+                    let radius = (ax * ax + ay * ay) / 4.0 + 1.0;
+                    let scale = amount / radius;
+                    x += scale * ax;
+                    y += scale * ay;
+                    z += amount * (2.0 / radius - 1.0);
+                }
+                VariationKind::Spiral => {
+                    let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay) + 1.0e-300;
+                    let scale = amount / radius;
+                    x += (ay / radius + crate::fast_sin::sin(radius)) * scale;
+                    y += (ax / radius - crate::fast_sin::cos(radius)) * scale;
+                }
+                VariationKind::Pdj {
+                    a: pa,
+                    b: pb,
+                    c: pc,
+                    d: pd,
+                } => {
+                    x += amount * (crate::fast_sin::sin(pa * ay) - crate::fast_sin::cos(pb * ax));
+                    y += amount * (crate::fast_sin::sin(pc * ax) - crate::fast_sin::cos(pd * ay));
+                }
+                VariationKind::Disc => {
+                    let radius_pi =
+                        std::f64::consts::PI * crate::fast_sqrt::sqrt(ax * ax + ay * ay);
+                    // JWildfire getPrecalcAtan takes the affine X coordinate first.
+                    let scale = amount * crate::fast_atan::atan2(ax, ay) / std::f64::consts::PI;
+                    x += crate::fast_sin::sin(radius_pi) * scale;
+                    y += crate::fast_sin::cos(radius_pi) * scale;
+                }
+                VariationKind::Hemisphere => {
+                    let r = amount / crate::fast_sqrt::sqrt(ax * ax + ay * ay + 1.0);
+                    x += ax * r;
+                    y += ay * r;
+                    z += r;
+                }
+            }
         }
         self.x = x;
         self.y = y;
