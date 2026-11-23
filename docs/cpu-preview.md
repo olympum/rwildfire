@@ -27,9 +27,8 @@ check separately with JDK 8 and a clean checkout of the pinned revision:
 The probe uses Java model decoding, transform tables, point transforms, view
 projection and raster accumulation. It compares decoded values, 256 points and
 all occupied bins in that window per scene, without filtering or antialiasing.
-For radius-1 TINA0010, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, and TINA0003,
-Java and Rust independently generate seeded padded rasters at each scene’s
-original quality. The gate compares every bin’s
+For every scene listed above, Java and Rust independently generate seeded
+padded rasters at the original quality with radius-1 filtering. The gate compares every bin’s
 count and float sums bit-for-bit, then compares every decoded RGB pixel.
 For each scene it rejects a modified bin and checks that bypassing the filter
 changes the image. The unfiltered TINA0010 path still uses a shared raster

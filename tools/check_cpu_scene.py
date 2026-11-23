@@ -102,6 +102,9 @@ def capture(source):
         ("TINA0013", (932, 662, 100), "filtered"),
         ("TINA0016", (932, 662, 3), "filtered"),
         ("TINA0003", (932, 662, 100), "filtered"),
+        ("TINA0004", (932, 662, 3), "filtered"),
+        ("TINA0006", (932, 662, 100), "filtered"),
+        ("TINA0008", (1014, 668, 100), "filtered"),
     ):
         flame = export / "resources/flames" / (name + ".flame")
         provenance["image"].setdefault(name, {})
