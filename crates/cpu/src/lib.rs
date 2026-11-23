@@ -1,3 +1,4 @@
+mod fast_atan;
 mod fast_sin;
 mod fast_sqrt;
 mod filter;

@@ -89,6 +89,13 @@ impl Point {
             x += t.pdj * (crate::fast_sin::sin(ay) - crate::fast_sin::cos(2.0 * ax));
             y += t.pdj * (crate::fast_sin::sin(3.0 * ax) - crate::fast_sin::cos(4.0 * ay));
         }
+        if t.disc != 0.0 {
+            let radius_pi = std::f64::consts::PI * crate::fast_sqrt::sqrt(ax * ax + ay * ay);
+            // JWildfire getPrecalcAtan takes the affine X coordinate first.
+            let scale = t.disc * crate::fast_atan::atan2(ax, ay) / std::f64::consts::PI;
+            x += crate::fast_sin::sin(radius_pi) * scale;
+            y += crate::fast_sin::cos(radius_pi) * scale;
+        }
         self.x = x;
         self.y = y;
         self.z = z;

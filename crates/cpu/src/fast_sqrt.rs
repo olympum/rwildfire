@@ -22,8 +22,11 @@ pub(crate) fn sqrt(mut x: f64) -> f64 {
     let exponent_root = f64::from_bits(((exponent.div_euclid(2) + 1023) as u64) << 52)
         * if exponent & 1 == 0 {
             1.0
+        } else if exponent == 1 {
+            // StrictMath.pow special-cases the exponent 0.5.
+            std::f64::consts::SQRT_2
         } else {
-            // StrictMath.pow(2, e/2) seeds odd exponents one ulp below SQRT_2.
+            // Other odd exponents seed one ulp below the scaled SQRT_2.
             f64::from_bits(0x3ff6_a09e_667f_3bcc)
         };
     let (root, inverse) = MANTISSAS.get_or_init(|| {
