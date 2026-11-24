@@ -23,7 +23,7 @@ check separately with JDK 8 and a clean checkout of the pinned revision:
 The probe uses Java model decoding, transform tables, point transforms, view
 projection and raster accumulation. It compares decoded values, 256 points and
 all occupied bins in that window per scene, without filtering or antialiasing.
-A synthetic trace checks ordered variation accumulation, explicit PDJ, rectangles, and curl3D parameters, and the horseshoe, fan2 (default and explicit parameters), and diamond transforms.
+The synthetic trace checks variation order, explicit parameters, and independent rolling random state for two `blur3D` transforms. Each `blur3D` initializes four draws from the seeded stream in xform order, before the initial point is drawn. Matching the seeded blur probes does not establish repeatability of the default Java renderer.
 For every scene listed above, Java and Rust independently generate seeded
 padded rasters at the original quality with radius-1 filtering. The gate compares every bin’s
 count and float sums bit-for-bit, then compares every decoded RGB pixel.
