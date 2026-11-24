@@ -114,7 +114,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for name in [
         "TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009",
         "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005",
-        "TINA0015", "TINA0023", "TINA0025", "TINA0032",
+        "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017",
+        "TINA0020", "TINA0022",
     ] {
         let xml = std::fs::read_to_string(source.join(format!("{name}.flame")))?;
         let trace = std::fs::read_to_string(captures.join(format!("{name}.txt")))?;

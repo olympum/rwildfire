@@ -44,6 +44,8 @@ pub enum VariationKind {
     Fan2 { x: f64, y: f64 },
     Diamond,
     Popcorn,
+    Blur,
+    Blur3D,
 }
 
 impl VariationKind {
@@ -65,6 +67,8 @@ impl VariationKind {
             Self::Fan2 { .. } => "fan2",
             Self::Diamond => "diamond",
             Self::Popcorn => "popcorn",
+            Self::Blur => "blur",
+            Self::Blur3D => "blur3D",
         }
     }
 }
@@ -247,6 +251,8 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "fan2_y",
                 "diamond",
                 "popcorn",
+                "blur",
+                "blur3D",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -316,6 +322,8 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 },
                 "diamond" => VariationKind::Diamond,
                 "popcorn" => VariationKind::Popcorn,
+                "blur" => VariationKind::Blur,
+                "blur3D" => VariationKind::Blur3D,
                 "curl3D" => VariationKind::Curl3D {
                     cx: number(c, "curl3D_cx", 0.0)?,
                     cy: number(c, "curl3D_cy", 0.05)?,

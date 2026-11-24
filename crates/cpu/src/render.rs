@@ -48,8 +48,13 @@ struct Point {
     z: f64,
     color: f64,
 }
+struct Blur3DState {
+    draws: [f64; 4],
+    index: usize,
+}
+
 impl Point {
-    fn apply(&mut self, t: &Transform) {
+    fn apply(&mut self, t: &Transform, rng: &mut Marsaglia, blur3d: &mut Option<Blur3DState>) {
         let [a, b, d, e, tx, ty] = t.affine;
         let ax = a * self.x + d * self.y + tx;
         let ay = b * self.x + e * self.y + ty;
@@ -130,6 +135,25 @@ impl Point {
                     x += amount * radius * crate::fast_sin::sin(a);
                     y += amount * radius * crate::fast_sin::cos(a);
                 }
+                VariationKind::Blur => {
+                    let angle = rng.next() * std::f64::consts::TAU;
+                    let radius = amount * rng.next();
+                    x += radius * crate::fast_sin::cos(angle);
+                    y += radius * crate::fast_sin::sin(angle);
+                }
+                VariationKind::Blur3D => {
+                    let state = blur3d.as_mut().expect("initialized blur3D state");
+                    let azimuth = rng.next() * 2.0 * std::f64::consts::PI;
+                    let [a, b, c, d] = state.draws;
+                    let radius = amount * (a + b + c + d - 2.0);
+                    state.draws[state.index] = rng.next();
+                    state.index = (state.index + 1) & 3;
+                    let polar = rng.next() * std::f64::consts::PI;
+                    let xy = radius * crate::fast_sin::sin(polar);
+                    x += xy * crate::fast_sin::cos(azimuth);
+                    y += xy * crate::fast_sin::sin(azimuth);
+                    z += radius * crate::fast_sin::cos(polar);
+                }
                 VariationKind::Popcorn => {
                     let shift = |v: f64| {
                         let t = crate::fast_tan::tan(3.0 * v);
@@ -199,6 +223,7 @@ pub struct Sampler<'a> {
     scene: &'a Scene,
     state: Point,
     rng: Marsaglia,
+    blur3d: Vec<Option<Blur3DState>>,
     table: [usize; TABLE_SIZE],
     size: [usize; 2],
     projection_offset: [f64; 2],
@@ -215,6 +240,20 @@ impl<'a> Sampler<'a> {
 
     fn with_border(scene: &'a Scene, width: usize, height: usize, border: usize) -> Self {
         let mut rng = Marsaglia::seeded(SEED);
+        // Java initializes each ordinary variation in xform order before drawing the first point.
+        let mut blur3d: Vec<_> = scene
+            .transforms
+            .iter()
+            .map(|t| {
+                t.variations
+                    .iter()
+                    .any(|v| matches!(v.kind, VariationKind::Blur3D))
+                    .then(|| Blur3DState {
+                        draws: std::array::from_fn(|_| rng.next()),
+                        index: 0,
+                    })
+            })
+            .collect();
         let mut state = Point {
             x: 2.0 * rng.next() - 1.0,
             y: 2.0 * rng.next() - 1.0,
@@ -223,9 +262,10 @@ impl<'a> Sampler<'a> {
         };
         rng.next(); // Initial material draw, even for the ordinary color raster.
         let table = table(&scene.transforms);
-        state.apply(&scene.transforms[0]);
+        state.apply(&scene.transforms[0], &mut rng, &mut blur3d[0]);
         for _ in 0..=42 {
-            state.apply(&scene.transforms[select(&mut rng, &table)]);
+            let index = select(&mut rng, &table);
+            state.apply(&scene.transforms[index], &mut rng, &mut blur3d[index]);
         }
         let ppu = pixels_per_unit(scene, width, height);
         let image = [width, height];
@@ -247,6 +287,7 @@ impl<'a> Sampler<'a> {
             scene,
             state,
             rng,
+            blur3d,
             table,
             size,
             projection_offset,
@@ -259,7 +300,11 @@ impl<'a> Sampler<'a> {
 
     pub fn step(&mut self) -> Sample {
         let transform = select(&mut self.rng, &self.table);
-        self.state.apply(&self.scene.transforms[transform]);
+        self.state.apply(
+            &self.scene.transforms[transform],
+            &mut self.rng,
+            &mut self.blur3d[transform],
+        );
         let point = [self.state.x, self.state.y];
         let color = self.state.color;
         let palette_index = ((color * 254.0 + 0.5) as usize).min(255);
