@@ -114,6 +114,13 @@ impl Point {
                     y += r * (ay - cy * r2);
                     z += r * (az + cz * r2);
                 }
+                VariationKind::Horseshoe => {
+                    let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay) + 1.0e-300;
+                    let sin_a = ax / radius;
+                    let cos_a = ay / radius;
+                    x += amount * (sin_a * ax - cos_a * ay);
+                    y += amount * (cos_a * ax + sin_a * ay);
+                }
                 VariationKind::Heart => {
                     let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay);
                     let angle = radius * crate::fast_atan::atan2(ax, ay);
