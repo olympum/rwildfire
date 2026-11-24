@@ -3,11 +3,11 @@ use rwildfire_cpu::{render, scene::parse};
 
 #[test]
 fn unsupported_variation_is_not_silently_discarded() {
-    let modified = support::flame(false).replacen("linear3D=", "swirl=", 1);
+    let modified = support::flame(false).replacen("linear3D=", "horseshoe=", 1);
     let Err(error) = parse(&modified) else {
         panic!("unsupported variation was accepted");
     };
-    assert!(error.contains("swirl"), "{error}");
+    assert!(error.contains("horseshoe"), "{error}");
 }
 
 #[test]

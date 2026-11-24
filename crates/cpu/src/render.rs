@@ -104,6 +104,27 @@ impl Point {
                     x += crate::fast_sin::sin(radius_pi) * scale;
                     y += crate::fast_sin::cos(radius_pi) * scale;
                 }
+                VariationKind::Swirl => {
+                    let r2 = ax * ax + ay * ay;
+                    let sin = crate::fast_sin::sin(r2);
+                    let cos = crate::fast_sin::cos(r2);
+                    x += amount * (sin * ax - cos * ay);
+                    y += amount * (cos * ax + sin * ay);
+                }
+                VariationKind::Rectangles {
+                    x: cell_x,
+                    y: cell_y,
+                } => {
+                    let reflect = |v: f64, cell: f64| {
+                        if cell.abs() < 1.0e-8 {
+                            v
+                        } else {
+                            (2.0 * (v / cell).floor() + 1.0) * cell - v
+                        }
+                    };
+                    x += amount * reflect(ax, cell_x);
+                    y += amount * reflect(ay, cell_y);
+                }
                 VariationKind::Hemisphere => {
                     let r = amount / crate::fast_sqrt::sqrt(ax * ax + ay * ay + 1.0);
                     x += ax * r;

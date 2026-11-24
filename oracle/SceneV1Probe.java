@@ -33,9 +33,10 @@ public class SceneV1Probe {
         }
         String name = v.getFunc().getName();
         out.printf(Locale.ROOT, "variation %s %s", name, v.getAmount());
-        if (name.equals("pdj")) {
+        int paramCount = name.equals("pdj") ? 4 : name.equals("rectangles") ? 2 : 0;
+        if (paramCount > 0) {
           Object[] params = v.getFunc().getParameterValues();
-          if (params.length != 4) throw new AssertionError("expected four PDJ parameters");
+          if (params.length != paramCount) throw new AssertionError("unexpected parameter count for " + name);
           for (Object param : params) out.print(" " + param);
         }
         out.println();

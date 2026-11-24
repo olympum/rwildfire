@@ -73,7 +73,7 @@ def capture(source):
         "seed": 741103597,
         "scenes": {},
     }
-    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001")
+    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007")
     scenes = [(name, export / "resources/flames" / (name + ".flame")) for name in names]
     synthetic = oracle.ROOT / "fixtures" / "ordered-variations.flame"
     for name, scene in [*scenes, (synthetic.stem, synthetic)]:
@@ -105,6 +105,7 @@ def capture(source):
         ("TINA0016", (932, 662, 3), "filtered"),
         ("TINA0003", (932, 662, 100), "filtered"),
         ("TINA0001", (932, 662, 100), "filtered"),
+        ("TINA0007", (932, 662, 100), "filtered"),
         ("TINA0004", (932, 662, 3), "filtered"),
         ("TINA0006", (932, 662, 100), "filtered"),
         ("TINA0008", (1014, 668, 100), "filtered"),

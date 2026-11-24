@@ -50,6 +50,7 @@ fn verify(xml: &str, reference: &str) {
             assert_eq!(fields[1], v.kind.name(), "xform {i} variation order");
             let values = match v.kind {
                 VariationKind::Pdj { a, b, c, d } => vec![v.amount, a, b, c, d],
+                VariationKind::Rectangles { x, y } => vec![v.amount, x, y],
                 _ => vec![v.amount],
             };
             exact(
@@ -110,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let captures = std::path::Path::new(captures);
     for name in [
         "TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009",
-        "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001",
+        "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007",
     ] {
         let xml = std::fs::read_to_string(source.join(format!("{name}.flame")))?;
         let trace = std::fs::read_to_string(captures.join(format!("{name}.txt")))?;

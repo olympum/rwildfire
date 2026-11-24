@@ -1,6 +1,6 @@
 <flame name="Ordered variations" size="200 150" center="0 0" scale="80" quality="3" brightness="4.0" gamma="4.0" gamma_threshold="0.04">
   <xform weight="1.0" color="0.1" coefs="0.65 0.14 -0.14 0.65 -0.4 -0.15" pdj="0.3" pdj_a="1.125" pdj_b="-1.75" pdj_c="2.625" pdj_d="0.875" linear3D="0.7" bubble="0.2" />
-  <xform weight="1.0" color="0.8" coefs="0.7 -0.12 0.12 0.7 0.5 0.35" linear3D="0.8" />
+  <xform weight="1.0" color="0.8" coefs="0.7 -0.12 0.12 0.7 0.5 0.35" linear3D="0.8" rectangles="0.15" rectangles_x="0" rectangles_y="-0.375" />
   <palette count="256" format="RGB">
 0000000101010202020303030404040505050606060707070808080909090A0A0A0B0B0B0C0C0C0D0D0D0E0E0E0F0F0F
 1010101111111212121313131414141515151616161717171818181919191A1A1A1B1B1B1C1C1C1D1D1D1E1E1E1F1F1F

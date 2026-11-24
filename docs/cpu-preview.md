@@ -4,8 +4,8 @@
 
 The preview reads original flame XML directly. It supports legacy single-layer
 2D scenes with an RGB palette, camera roll, weighted XY transforms, and the
-`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, and `hemisphere` variations. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
-transforms, but the supported camera still projects only XY. For trigonometric arguments in `waves`, `spiral`, `pdj`, or `disc` above
+`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, `hemisphere`, `swirl`, and `rectangles` variations. Rectangles takes `rectangles_x` and `rectangles_y`, defaulting to `0.3` and `0.2`. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
+transforms, but the supported camera still projects only XY. For trigonometric arguments in `waves`, `spiral`, `pdj`, `disc`, or `swirl` above
 about 12,739 radians in magnitude, Rust uses its standard trigonometric functions instead of
 Java’s large-angle reduction. For `waves`, small or zero affine translations can reach that range; for
 `spiral`, the argument is the length of the affine XY point. Supported variations accumulate in the order JWildfire loads them from
@@ -17,7 +17,7 @@ keeps the prior unfiltered preview behavior; the missing-attribute case does
 not reproduce Java’s preference default. Other radii, kernels, oversampling,
 and adaptive antialiasing are not supported.
 
-The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, TINA0003, and TINA0001
+The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, TINA0003, TINA0001, and TINA0007
 from the validated JWildfire 9.20 source export, not copies in this repository. To run the scene
 check separately with JDK 8 and a clean checkout of the pinned revision:
 
