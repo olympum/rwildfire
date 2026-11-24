@@ -40,6 +40,7 @@ pub enum VariationKind {
     Rectangles { x: f64, y: f64 },
     Curl3D { cx: f64, cy: f64, cz: f64 },
     Heart,
+    Horseshoe,
 }
 
 impl VariationKind {
@@ -57,6 +58,7 @@ impl VariationKind {
             Self::Rectangles { .. } => "rectangles",
             Self::Curl3D { .. } => "curl3D",
             Self::Heart => "heart",
+            Self::Horseshoe => "horseshoe",
         }
     }
 }
@@ -233,6 +235,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "curl3D_cy",
                 "curl3D_cz",
                 "heart",
+                "horseshoe",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -290,6 +293,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "hemisphere" => VariationKind::Hemisphere,
                 "swirl" => VariationKind::Swirl,
                 "heart" => VariationKind::Heart,
+                "horseshoe" => VariationKind::Horseshoe,
                 "curl3D" => VariationKind::Curl3D {
                     cx: number(c, "curl3D_cx", 0.0)?,
                     cy: number(c, "curl3D_cy", 0.05)?,
