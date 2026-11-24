@@ -36,6 +36,8 @@ pub enum VariationKind {
     Pdj { a: f64, b: f64, c: f64, d: f64 },
     Disc,
     Hemisphere,
+    Swirl,
+    Rectangles { x: f64, y: f64 },
 }
 
 impl VariationKind {
@@ -49,6 +51,8 @@ impl VariationKind {
             Self::Pdj { .. } => "pdj",
             Self::Disc => "disc",
             Self::Hemisphere => "hemisphere",
+            Self::Swirl => "swirl",
+            Self::Rectangles { .. } => "rectangles",
         }
     }
 }
@@ -216,6 +220,10 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "pdj_d",
                 "disc",
                 "hemisphere",
+                "swirl",
+                "rectangles",
+                "rectangles_x",
+                "rectangles_y",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -241,6 +249,11 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         {
             return Err("pdj parameters require a pdj variation".into());
         }
+        if c.attribute("rectangles").is_none()
+            && (c.attribute("rectangles_x").is_some() || c.attribute("rectangles_y").is_some())
+        {
+            return Err("rectangles parameters require a rectangles variation".into());
+        }
         // AbstractFlameReader inserts variations as it walks XML attributes;
         // XForm evaluates the supported priority-zero variations in that order.
         let mut variations = Vec::new();
@@ -259,6 +272,11 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 },
                 "disc" => VariationKind::Disc,
                 "hemisphere" => VariationKind::Hemisphere,
+                "swirl" => VariationKind::Swirl,
+                "rectangles" => VariationKind::Rectangles {
+                    x: number(c, "rectangles_x", 0.3)?,
+                    y: number(c, "rectangles_y", 0.2)?,
+                },
                 _ => continue,
             };
             variations.push(Variation {
