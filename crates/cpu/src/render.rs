@@ -130,6 +130,14 @@ impl Point {
                     x += amount * radius * crate::fast_sin::sin(a);
                     y += amount * radius * crate::fast_sin::cos(a);
                 }
+                VariationKind::Popcorn => {
+                    let shift = |v: f64| {
+                        let t = crate::fast_tan::tan(3.0 * v);
+                        crate::fast_sin::sin(if t.is_nan() { 0.0 } else { t })
+                    };
+                    x += amount * (ax + tx * shift(ay));
+                    y += amount * (ay + ty * shift(ax));
+                }
                 VariationKind::Diamond => {
                     let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay) + 1.0e-300;
                     x += amount * (ax / radius) * crate::fast_sin::cos(radius);
