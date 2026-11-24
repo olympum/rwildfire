@@ -104,6 +104,23 @@ impl Point {
                     x += crate::fast_sin::sin(radius_pi) * scale;
                     y += crate::fast_sin::cos(radius_pi) * scale;
                 }
+                VariationKind::Curl3D { cx, cy, cz } => {
+                    let az = self.z;
+                    let r2 = ax * ax + ay * ay + az * az;
+                    let c2 = cx * cx + cy * cy + cz * cz;
+                    let r = amount
+                        / (r2 * c2 + (2.0 * cx) * ax - (2.0 * cy) * ay + (2.0 * cz) * az + 1.0);
+                    x += r * (ax + cx * r2);
+                    y += r * (ay - cy * r2);
+                    z += r * (az + cz * r2);
+                }
+                VariationKind::Heart => {
+                    let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay);
+                    let angle = radius * crate::fast_atan::atan2(ax, ay);
+                    let scale = radius * amount;
+                    x += scale * crate::fast_sin::sin(angle);
+                    y -= scale * crate::fast_sin::cos(angle);
+                }
                 VariationKind::Swirl => {
                     let r2 = ax * ax + ay * ay;
                     let sin = crate::fast_sin::sin(r2);

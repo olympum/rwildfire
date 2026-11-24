@@ -38,6 +38,8 @@ pub enum VariationKind {
     Hemisphere,
     Swirl,
     Rectangles { x: f64, y: f64 },
+    Curl3D { cx: f64, cy: f64, cz: f64 },
+    Heart,
 }
 
 impl VariationKind {
@@ -53,6 +55,8 @@ impl VariationKind {
             Self::Hemisphere => "hemisphere",
             Self::Swirl => "swirl",
             Self::Rectangles { .. } => "rectangles",
+            Self::Curl3D { .. } => "curl3D",
+            Self::Heart => "heart",
         }
     }
 }
@@ -224,6 +228,11 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "rectangles",
                 "rectangles_x",
                 "rectangles_y",
+                "curl3D",
+                "curl3D_cx",
+                "curl3D_cy",
+                "curl3D_cz",
+                "heart",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -254,6 +263,13 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         {
             return Err("rectangles parameters require a rectangles variation".into());
         }
+        if c.attribute("curl3D").is_none()
+            && ["curl3D_cx", "curl3D_cy", "curl3D_cz"]
+                .iter()
+                .any(|key| c.attribute(*key).is_some())
+        {
+            return Err("curl3D parameters require a curl3D variation".into());
+        }
         // AbstractFlameReader inserts variations as it walks XML attributes;
         // XForm evaluates the supported priority-zero variations in that order.
         let mut variations = Vec::new();
@@ -273,6 +289,12 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "disc" => VariationKind::Disc,
                 "hemisphere" => VariationKind::Hemisphere,
                 "swirl" => VariationKind::Swirl,
+                "heart" => VariationKind::Heart,
+                "curl3D" => VariationKind::Curl3D {
+                    cx: number(c, "curl3D_cx", 0.0)?,
+                    cy: number(c, "curl3D_cy", 0.05)?,
+                    cz: number(c, "curl3D_cz", 0.05)?,
+                },
                 "rectangles" => VariationKind::Rectangles {
                     x: number(c, "rectangles_x", 0.3)?,
                     y: number(c, "rectangles_y", 0.2)?,
