@@ -7,4 +7,6 @@ mod fast_tan;
 mod filter;
 mod render;
 pub mod scene;
-pub use render::{render, render_with_raster, Bin, Sample, Sampler};
+pub use render::{
+    render, render_quality_500_with_raster, render_with_raster, Bin, Sample, Sampler,
+};

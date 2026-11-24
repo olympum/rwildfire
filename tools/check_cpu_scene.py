@@ -8,6 +8,7 @@ from pathlib import Path
 import struct
 import subprocess
 import tempfile
+import time
 
 import oracle
 
@@ -15,9 +16,10 @@ import oracle
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", type=Path, help="clean pinned checkout; defaults to the prepared export")
+    parser.add_argument("--quality-500", action="store_true", help="compare the six original quality-500 TINA renders instead of the standard images")
     args = parser.parse_args()
     try:
-        capture(args.source)
+        capture(args.source, args.quality_500)
     except (oracle.OracleError, OSError, subprocess.SubprocessError) as exc:
         parser.exit(1, f"check-cpu-scene: {exc}\n")
 
@@ -43,7 +45,7 @@ def compare_padded_rasters(reference, candidate, name, layout):
     print(f"{name}: {bins:,} padded bins match bit-for-bit ({hits:,} hits, {budget:,} sample budget)", flush=True)
 
 
-def capture(source):
+def capture(source, quality_500):
     info = oracle.resolve_source(source)
     export = oracle.CACHE / info["export"]
     jdk = oracle.resolve_toolchain()
@@ -134,7 +136,7 @@ def capture(source):
     java = [jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}", "-cp", runtime_cp]
     provenance["image"] = {"probe_sha256": oracle.sha256_file(image_probe),
                            "raster_probe_sha256": oracle.sha256_file(raster_probe)}
-    for name, layout, mode in (
+    standard_images = (
         ("TINA0010", (1014, 668, 100), "unfiltered"),
         ("TINA0010", (1014, 668, 100), "filtered"),
         ("TINA0011", (932, 662, 3), "filtered"),
@@ -162,21 +164,34 @@ def capture(source):
         ("TINA0004", (932, 662, 3), "filtered"),
         ("TINA0006", (932, 662, 100), "filtered"),
         ("TINA0008", (1014, 668, 100), "filtered"),
-    ):
-        flame = scenes[name]
+    )
+    high_images = tuple((f"TINA{i:04}", (932, 662, 500), "filtered")
+                        for i in (27, 28, 29, 30, 31, 33))
+    for name, layout, mode in high_images if quality_500 else standard_images:
+        flame = (export / "resources/flames" / (name + ".flame")) if quality_500 else scenes[name]
+        if quality_500:
+            provenance["scenes"][name] = {"input_sha256": oracle.sha256_file(flame)}
+        started = time.monotonic()
         provenance["image"].setdefault(name, {})
         shade = [*java, "ImageV1Probe", str(flame)]
         image = work / name / mode
         image.mkdir(parents=True)
         print(f"{name} {mode} image:", flush=True)
-        subprocess.run([*example, mode, str(flame), str(image), str(layout[2])],
+        if quality_500 and name == high_images[0][0]:
+            capped = subprocess.run([*example, "filtered", str(flame), str(image), "500"],
+                                    cwd=oracle.ROOT, capture_output=True, text=True, timeout=60)
+            if capped.returncode != 2 or "sample budget exceeds 200000000 iterations" not in capped.stderr:
+                raise oracle.OracleError(f"preview cap control failed: {capped.returncode} {capped.stderr}")
+            print("preview cap rejected a quality-500 render (200,000,000 iteration cap)", flush=True)
+        capture_mode = "quality-500" if quality_500 else mode
+        subprocess.run([*example, capture_mode, str(flame), str(image), str(layout[2])],
                        cwd=oracle.ROOT, check=True, timeout=600)
         raster = str(image / "raster.bin")
         if mode == "filtered":
             reference = str(image / "java-raster.bin")
             subprocess.run([
                 *java, "PaddedRasterProbe", str(flame), reference,
-            ], cwd=oracle.ROOT, check=True, timeout=120)
+            ], cwd=oracle.ROOT, check=True, timeout=300 if quality_500 else 120)
             java_bins, rust_bins = Path(reference).read_bytes(), Path(raster).read_bytes()
             compare_padded_rasters(java_bins, rust_bins, name, layout)
             mutant_raster = bytearray(rust_bins)
@@ -204,6 +219,8 @@ def capture(source):
         if mutant.returncode != 1:
             raise oracle.OracleError(f"image {control} control exited {mutant.returncode}, expected 1")
         provenance["image"][name][mode] = {name: oracle.sha256_file(image / name) for name in outputs}
+        if quality_500:
+            print(f"{name}: quality-500 comparison took {time.monotonic() - started:.1f}s", flush=True)
     (work / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
 
