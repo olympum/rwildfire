@@ -38,11 +38,17 @@ fn verify(xml: &str, reference: &str) {
         &row("scene")[1..],
         "scene",
     );
+    let camera = row("camera");
     exact(
         &[sc.pitch_degrees, sc.yaw_degrees, sc.perspective],
-        &row("camera")[1..],
+        &camera[1..4],
         "camera",
     );
+    let project_3d = match camera[4] {
+        "0" => false,
+        "1" => true,
+        _ => panic!("invalid Java camera mode"),
+    };
     for (i, t) in sc.transforms.iter().enumerate() {
         let [a, b, c, d, e, f] = t.affine;
         exact(
@@ -76,9 +82,9 @@ fn verify(xml: &str, reference: &str) {
             &format!("palette {i}"),
         );
     }
-    if sc.perspective != 0.0 {
+    if project_3d {
         let mut visible = 0;
-        for i in 0..20 {
+        for i in 0..21 {
             let fields = row("project");
             let point = std::array::from_fn(|j| fields[j + 1].parse().unwrap());
             let pixel = sampler.project_pixel(point);
@@ -90,12 +96,12 @@ fn verify(xml: &str, reference: &str) {
             );
         }
         assert!(
-            (1..20).contains(&visible),
+            (1..21).contains(&visible),
             "expected both plotted and clipped camera vectors"
         );
         println!(
-            "camera: 20 point-to-pixel vectors match Java ({visible} plotted, {} clipped)",
-            20 - visible
+            "camera: 21 point-to-pixel vectors match Java ({visible} plotted, {} clipped)",
+            21 - visible
         );
     }
     for i in 0..256 {

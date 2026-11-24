@@ -25,7 +25,7 @@ public class SceneV1Probe {
     FlameRendererView view = new FlameRendererView(Stereo3dEye.UNSPECIFIED, f, rng, 0, w, h, w, h, ctx, null);
     PrintWriter out = new PrintWriter(args[1], StandardCharsets.UTF_8.name());
     out.printf(Locale.ROOT,"scene %d %d %s %s %s %s %s %s %s %s%n",f.getWidth(),f.getHeight(),f.getPixelsPerUnit(),f.getCamZoom(),f.getCentreX(),f.getCentreY(),f.getBrightness(),f.getGamma(),f.getGammaThreshold(),f.getCamRoll());
-    out.printf(Locale.ROOT, "camera %s %s %s%n", f.getCamPitch(), f.getCamYaw(), f.getCamPerspective());
+    out.printf(Locale.ROOT, "camera %s %s %s %d%n", f.getCamPitch(), f.getCamYaw(), f.getCamPerspective(), f.is3dProjectionRequired() ? 1 : 0);
     for (XForm x : xf) {
       out.printf(Locale.ROOT,"xform %s %s %s %s %s %s %s %s %s%n",x.getWeight(),x.getColor(),x.getColorSymmetry(),x.getXYCoeff00(),x.getXYCoeff01(),x.getXYCoeff10(),x.getXYCoeff11(),x.getXYCoeff20(),x.getXYCoeff21());
       for (Variation v : x.getVariations()) {
@@ -65,6 +65,11 @@ public class SceneV1Probe {
           out.printf(Locale.ROOT, "project %s %s %s %d %d%n", xy[0], xy[1], depth, pixel[0], pixel[1]);
         }
       }
+      // Near TINA0026's camera axis (camera z ~= 2): without the depth guard
+      // this point would be reflected back onto the raster.
+      plot.x = 0.243; plot.y = 1.535; plot.z = 1.259;
+      int[] pixel = pixel(view, plot, prj, w, h);
+      out.printf(Locale.ROOT, "project 0.243 1.535 1.259 %d %d%n", pixel[0], pixel[1]);
     }
     for (int i=0;i<256;i++) {
       current=current.getNextAppliedXFormTable()[rng.random(Constants.NEXT_APPLIED_XFORM_TABLE_SIZE)];
