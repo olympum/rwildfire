@@ -6,6 +6,9 @@ pub struct Scene {
     pub ppu: f64,
     pub zoom: f64,
     pub roll_degrees: f64,
+    pub pitch_degrees: f64,
+    pub yaw_degrees: f64,
+    pub perspective: f64,
     pub center: [f64; 2],
     pub brightness: f64,
     pub gamma: f64,
@@ -164,13 +167,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "cam_perspective",
         ],
     )?;
-    for (key, expected) in [
-        ("oversample", 1.0),
-        ("temporal_samples", 1.0),
-        ("cam_pitch", 0.0),
-        ("cam_yaw", 0.0),
-        ("cam_perspective", 0.0),
-    ] {
+    for (key, expected) in [("oversample", 1.0), ("temporal_samples", 1.0)] {
         if number(n, key, expected)? != expected {
             return Err(format!("unsupported non-default {key}"));
         }
@@ -183,6 +180,10 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let ppu = finite(&required(n, "scale")?, "scale")?;
     let zoom = number(n, "cam_zoom", 1.)?;
     let roll_degrees = number(n, "rotate", 0.)?;
+    // Legacy pitch/yaw are radians in XML; Java stores them in degrees.
+    let pitch_degrees = number(n, "cam_pitch", 0.)? * 180.0 / std::f64::consts::PI;
+    let yaw_degrees = number(n, "cam_yaw", 0.)? * 180.0 / std::f64::consts::PI;
+    let perspective = number(n, "cam_perspective", 0.)?;
     let brightness = number(n, "brightness", 4.)?;
     let gamma = number(n, "gamma", 4.)?;
     let threshold = number(n, "gamma_threshold", 0.04)?;
@@ -199,7 +200,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         || gamma <= 0.
         || threshold <= 0.
         || !(ppu * zoom).is_finite()
-        || !(roll_degrees * std::f64::consts::PI).is_finite()
+        || [roll_degrees, pitch_degrees, yaw_degrees]
+            .iter()
+            .any(|angle| !(angle * std::f64::consts::PI).is_finite())
     {
         return Err("invalid size, camera or tone settings".into());
     }
@@ -381,6 +384,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         ppu,
         zoom,
         roll_degrees,
+        pitch_degrees,
+        yaw_degrees,
+        perspective,
         center,
         brightness,
         gamma,

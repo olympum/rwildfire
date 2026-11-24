@@ -235,6 +235,28 @@ impl Point {
     }
 }
 
+const CAMERA_EPSILON: f64 = 1.0e-8;
+
+// FlameRendererView's matrix for the supported zero-bank camera, grouped
+// by output coordinate to match Java's dot products.
+fn camera_matrix(scene: &Scene) -> Option<[[f64; 3]; 3]> {
+    if ![scene.pitch_degrees, scene.yaw_degrees, scene.perspective]
+        .iter()
+        .any(|v| v.abs() > CAMERA_EPSILON)
+    {
+        return None;
+    }
+    let [pitch, yaw, roll] = [scene.pitch_degrees, -scene.yaw_degrees, scene.roll_degrees]
+        .map(|v| v * std::f64::consts::PI / 180.0);
+    let [sp, sy, sr] = [pitch, yaw, roll].map(crate::fast_sin::sin);
+    let [cp, cy, cr] = [pitch, yaw, roll].map(crate::fast_sin::cos);
+    Some([
+        [-cp * sr * sy + cr * cy, -cp * cy * sr - cr * sy, sp * sr],
+        [cp * cr * sy + sr * cy, cp * cr * cy - sr * sy, -cr * sp],
+        [sp * sy, cy * sp, cp],
+    ])
+}
+
 pub struct Sampler<'a> {
     scene: &'a Scene,
     state: Point,
@@ -243,6 +265,7 @@ pub struct Sampler<'a> {
     table: [usize; TABLE_SIZE],
     size: [usize; 2],
     projection_offset: [f64; 2],
+    camera_matrix: Option<[[f64; 3]; 3]>,
     sin_roll: f64,
     cos_roll: f64,
     span: [f64; 2],
@@ -293,12 +316,23 @@ impl<'a> Sampler<'a> {
         let span =
             std::array::from_fn(|i| corner[i] + image[i] as f64 / ppu + border_units - origin[i]);
         let scale = std::array::from_fn(|i| size[i] as f64 / span[i]);
-        let (sin_roll, cos_roll) = (-std::f64::consts::PI * scene.roll_degrees / 180.0).sin_cos();
-        let [cx, cy] = scene.center;
-        let projection_offset = [
-            cx * (1.0 - cos_roll) - cy * sin_roll - origin[0],
-            cy * (1.0 - cos_roll) + cx * sin_roll - origin[1],
-        ];
+        let camera_matrix = camera_matrix(scene);
+        let (sin_roll, cos_roll, projection_offset) = if camera_matrix.is_some() {
+            (0.0, 1.0, origin.map(|v| -v))
+        } else {
+            let angle = -std::f64::consts::PI * scene.roll_degrees / 180.0;
+            let sin = crate::fast_sin::sin(angle);
+            let cos = crate::fast_sin::cos(angle);
+            let [cx, cy] = scene.center;
+            (
+                sin,
+                cos,
+                [
+                    cx * (1.0 - cos) - cy * sin - origin[0],
+                    cy * (1.0 - cos) + cx * sin - origin[1],
+                ],
+            )
+        };
         Self {
             scene,
             state,
@@ -307,6 +341,7 @@ impl<'a> Sampler<'a> {
             table,
             size,
             projection_offset,
+            camera_matrix,
             sin_roll,
             cos_roll,
             span,
@@ -324,18 +359,7 @@ impl<'a> Sampler<'a> {
         let point = [self.state.x, self.state.y];
         let color = self.state.color;
         let palette_index = ((color * 254.0 + 0.5) as usize).min(255);
-        let [x, y] = point;
-        let projected = [
-            x * self.cos_roll + y * self.sin_roll + self.projection_offset[0],
-            y * self.cos_roll - x * self.sin_roll + self.projection_offset[1],
-        ];
-        let pixel = if (0..2).all(|i| projected[i] >= 0.0 && projected[i] <= self.span[i]) {
-            let pixel: [usize; 2] =
-                std::array::from_fn(|i| (self.scale[i] * projected[i] + 0.5) as usize);
-            (pixel[0] < self.size[0] && pixel[1] < self.size[1]).then_some(pixel)
-        } else {
-            None
-        };
+        let pixel = self.project_pixel([point[0], point[1], self.state.z]);
         Sample {
             transform,
             point,
@@ -343,6 +367,31 @@ impl<'a> Sampler<'a> {
             color,
             palette_index,
             pixel,
+        }
+    }
+
+    /// Map a world-space point to the sample raster without modifying the orbit.
+    pub fn project_pixel(&self, [x, y, z]: [f64; 3]) -> Option<[usize; 2]> {
+        let [x, y] = if let Some(matrix) = self.camera_matrix {
+            let [cx, cy, cz] = matrix.map(|[a, b, c]| a * x + b * y + c * z);
+            let depth = 1.0 - self.scene.perspective * cz;
+            if depth < CAMERA_EPSILON {
+                return None;
+            }
+            [cx / depth, cy / depth]
+        } else {
+            [x, y]
+        };
+        let projected = [
+            x * self.cos_roll + y * self.sin_roll + self.projection_offset[0],
+            y * self.cos_roll - x * self.sin_roll + self.projection_offset[1],
+        ];
+        if (0..2).all(|i| projected[i] >= 0.0 && projected[i] <= self.span[i]) {
+            let pixel: [usize; 2] =
+                std::array::from_fn(|i| (self.scale[i] * projected[i] + 0.5) as usize);
+            (pixel[0] < self.size[0] && pixel[1] < self.size[1]).then_some(pixel)
+        } else {
+            None
         }
     }
 }

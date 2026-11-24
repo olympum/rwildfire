@@ -43,13 +43,15 @@ public class PaddedRasterProbe {
     }
     RasterFloatInt raster = new RasterFloatInt();
     raster.allocRaster(flame, stride, rows, 1, quality);
+    XYZPoint plot = new XYZPoint();
     XYZProjectedPoint projected = new XYZProjectedPoint(0);
     PlotSample sample = new PlotSample();
     PlotSample[] samples = {sample};
     for (long i = 0; i < budget; i++) {
       current = current.getNextAppliedXFormTable()[rng.random(Constants.NEXT_APPLIED_XFORM_TABLE_SIZE)];
       current.transformPoint(ctx, aff, var, p, p);
-      if (!view.project(p, projected)) continue;
+      plot.assign(p); // The renderer projects q, not the next iteration’s point p.
+      if (!view.project(plot, projected)) continue;
       int x = (int) (view.getBws() * projected.x + 0.5);
       int y = (int) (view.getBhs() * projected.y + 0.5);
       if (x < 0 || x >= stride || y < 0 || y >= rows) continue;

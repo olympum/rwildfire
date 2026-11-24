@@ -38,6 +38,17 @@ fn verify(xml: &str, reference: &str) {
         &row("scene")[1..],
         "scene",
     );
+    let camera = row("camera");
+    exact(
+        &[sc.pitch_degrees, sc.yaw_degrees, sc.perspective],
+        &camera[1..4],
+        "camera",
+    );
+    let project_3d = match camera[4] {
+        "0" => false,
+        "1" => true,
+        _ => panic!("invalid Java camera mode"),
+    };
     for (i, t) in sc.transforms.iter().enumerate() {
         let [a, b, c, d, e, f] = t.affine;
         exact(
@@ -69,6 +80,28 @@ fn verify(xml: &str, reference: &str) {
             &rgb.map(f64::from),
             &row("palette")[1..],
             &format!("palette {i}"),
+        );
+    }
+    if project_3d {
+        let mut visible = 0;
+        for i in 0..21 {
+            let fields = row("project");
+            let point = std::array::from_fn(|j| fields[j + 1].parse().unwrap());
+            let pixel = sampler.project_pixel(point);
+            visible += usize::from(pixel.is_some());
+            exact(
+                &pixel.map_or([-1., -1.], |xy| xy.map(|p| p as f64)),
+                &fields[4..],
+                &format!("camera projection {i}: {point:?}"),
+            );
+        }
+        assert!(
+            (1..21).contains(&visible),
+            "expected both plotted and clipped camera vectors"
+        );
+        println!(
+            "camera: 21 point-to-pixel vectors match Java ({visible} plotted, {} clipped)",
+            21 - visible
         );
     }
     for i in 0..256 {
@@ -116,7 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009",
         "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005",
         "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017",
-        "TINA0020", "TINA0022", "TINA0014", "TINA0019", "TINA0024",
+        "TINA0020", "TINA0022", "TINA0014", "TINA0019", "TINA0024", "TINA0026",
     ] {
         let filename = format!("{name}.flame");
         let controlled = captures.join("inputs").join(&filename);
