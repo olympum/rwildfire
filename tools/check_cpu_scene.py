@@ -83,7 +83,7 @@ def capture(source):
                    cwd=oracle.ROOT, check=True, timeout=120)
     provenance["trig"] = {"probe_sha256": oracle.sha256_file(trig_probe),
                           "trace_sha256": oracle.sha256_file(trig_trace)}
-    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015", "TINA0023", "TINA0025", "TINA0032")
+    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017", "TINA0020", "TINA0022")
     scenes = [(name, export / "resources/flames" / (name + ".flame")) for name in names]
     synthetic = oracle.ROOT / "fixtures" / "ordered-variations.flame"
     for name, scene in [*scenes, (synthetic.stem, synthetic)]:
@@ -121,6 +121,11 @@ def capture(source):
         ("TINA0023", (932, 662, 100), "filtered"),
         ("TINA0025", (932, 662, 100), "filtered"),
         ("TINA0032", (932, 662, 3), "filtered"),
+        ("TINA0002", (932, 662, 3), "filtered"),
+        ("TINA0012", (932, 662, 100), "filtered"),
+        ("TINA0017", (932, 662, 3), "filtered"),
+        ("TINA0020", (932, 662, 100), "filtered"),
+        ("TINA0022", (932, 662, 100), "filtered"),
         ("TINA0004", (932, 662, 3), "filtered"),
         ("TINA0006", (932, 662, 100), "filtered"),
         ("TINA0008", (1014, 668, 100), "filtered"),
