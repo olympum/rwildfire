@@ -117,12 +117,14 @@ def capture(source, quality_500):
                                            "pinned_julia3D_power": powers[name]}
         scenes[name] = scene
     synthetic = oracle.ROOT / "fixtures" / "ordered-variations.flame"
-    for name, scene in [*scenes.items(), (synthetic.stem, synthetic)]:
+    singular = synthetic.with_name("zero-singular.flame")
+    for name, scene in [*scenes.items(), (synthetic.stem, synthetic), (singular.stem, singular)]:
         trace = work / (name + ".txt")
         with (work / (name + ".stdout")).open("wb") as stdout, (work / (name + ".stderr")).open("wb") as stderr:
             subprocess.run([
                 jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
                 "-cp", runtime_cp, "SceneV1Probe", str(scene), str(trace),
+                *(["orbit-only"] if scene == singular else []),
             ], cwd=oracle.ROOT, stdout=stdout, stderr=stderr, check=True, timeout=120)
         provenance["scenes"].setdefault(name, {}).update(input_sha256=oracle.sha256_file(scene),
                                                        trace_sha256=oracle.sha256_file(trace))

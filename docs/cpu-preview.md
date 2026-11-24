@@ -6,7 +6,11 @@ The preview reads original flame XML directly. It supports legacy single-layer
 scenes with an RGB palette, camera roll, weighted XY transforms, and the
 `linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, `hemisphere`, `swirl`, `rectangles`, `curl3D`, `heart`, `horseshoe`, `fan2`, `diamond`, `popcorn`, `blur`, `blur3D`, and `julia3D` variations. Fan2 reads `fan2_x` and `fan2_y`, defaulting to `(0.5, 1.2)`. Curl3D reads `curl3D_cx`, `curl3D_cy`, and `curl3D_cz`, defaulting to `(0, 0.05, 0.05)`. Rectangles takes `rectangles_x` and `rectangles_y`, defaulting to `0.3` and `0.2`. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
 transforms. The camera supports pitch, yaw, roll, and perspective, including near-plane clipping before pixel mapping. Legacy pitch and yaw are radians in XML; `rotate` is in degrees. Camera bank, translation, depth of field, and solid rendering remain unsupported. The sine, cosine, and tangent ports use the pinned Java angle reduction. The parity gate compares those functions against Java across small and large arguments, including near tangent poles. Supported variations accumulate in the order JWildfire loads them from
-legacy XML. Priority overrides and indexed variation names remain unsupported. The legacy XML `rotate` value is read in degrees, as in JWildfire.
+legacy XML. An explicit zero amount is still evaluated: a zero `blur` consumes
+random draws, and a zero `curl3D` at a singularity can produce NaN. The gate
+checks the singularity before projection, not as an image. The preview rejects
+`pdj_a` through `pdj_d` without a `pdj` variation on the same transform;
+JWildfire ignores those orphan attributes. Priority overrides and indexed variation names remain unsupported. The legacy XML `rotate` value is read in degrees, as in JWildfire.
 `julia3D` requires a nonzero explicit `julia3D_power`. The original TINA0014,
 TINA0019, and TINA0024 omit it, so the gate makes temporary copies pinning
 powers 2, −3, and 5 respectively. Java normally initializes omitted power

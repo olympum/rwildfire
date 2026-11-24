@@ -12,6 +12,7 @@ import org.jwildfire.create.tina.variation.*;
 
 public class SceneV1Probe {
   public static void main(String[] args) throws Exception {
+    boolean orbitOnly = args.length == 3 && "orbit-only".equals(args[2]);
     Flame f = new FlameReader(Prefs.getPrefs()).readFlames(args[0]).get(0);
     Layer layer = f.getFirstLayer();
     List<XForm> xf = layer.getXForms();
@@ -51,6 +52,14 @@ public class SceneV1Probe {
     for (int i=0;i<=Constants.INITIAL_ITERATIONS;i++) {
       current=current.getNextAppliedXFormTable()[rng.random(Constants.NEXT_APPLIED_XFORM_TABLE_SIZE)];
       current.transformPoint(ctx,aff,var,p,p);
+    }
+    if (orbitOnly) {
+      current = current.getNextAppliedXFormTable()[rng.random(Constants.NEXT_APPLIED_XFORM_TABLE_SIZE)];
+      current.transformPoint(ctx, aff, var, p, p);
+      out.printf(Locale.ROOT, "orbit %s %s %s%n", p.x, p.y, p.z);
+      out.close();
+      if (out.checkError()) throw new AssertionError("orbit write failed");
+      return;
     }
     RasterFloatInt raster=new RasterFloatInt(); raster.allocRaster(f,w,h,1,1.0);
     XYZProjectedPoint prj=new XYZProjectedPoint(0);

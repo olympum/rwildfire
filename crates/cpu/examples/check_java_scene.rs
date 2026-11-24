@@ -174,5 +174,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("ordered-variations: comparing Rust against fresh Java scene trace");
     verify(&xml, &trace);
     println!("ordered-variations: model, 256 points and occupied bins match exactly");
+    let singular = std::path::Path::new(synthetic).with_file_name("zero-singular.flame");
+    let scene = parse(&std::fs::read_to_string(singular)?)?;
+    let trace = std::fs::read_to_string(captures.join("zero-singular.txt"))?;
+    let expected: Vec<_> = trace
+        .lines()
+        .last()
+        .ok_or("missing orbit row")?
+        .split_whitespace()
+        .collect();
+    assert_eq!(
+        expected,
+        ["orbit", "NaN", "NaN", "NaN"],
+        "Java must reach the singularity"
+    );
+    let point = Sampler::new(&scene, scene.width * 2, scene.height * 2).step();
+    let xyz = [point.point[0], point.point[1], point.z];
+    assert!(
+        xyz.iter().all(|v| v.is_nan()),
+        "singular zero Curl3D produced {xyz:?}"
+    );
+    println!("zero-singular: Java and Rust both produced NaN in all three orbit coordinates");
     Ok(())
 }
