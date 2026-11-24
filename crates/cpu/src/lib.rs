@@ -1,5 +1,6 @@
 mod angle_reduce;
 mod fast_atan;
+mod fast_pow;
 mod fast_sin;
 mod fast_sqrt;
 mod fast_tan;

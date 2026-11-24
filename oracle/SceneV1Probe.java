@@ -33,7 +33,7 @@ public class SceneV1Probe {
         }
         String name = v.getFunc().getName();
         out.printf(Locale.ROOT, "variation %s %s", name, v.getAmount());
-        int paramCount = name.equals("pdj") ? 4 : (name.equals("rectangles") || name.equals("fan2")) ? 2 : name.equals("curl3D") ? 3 : 0;
+        int paramCount = name.equals("pdj") ? 4 : (name.equals("rectangles") || name.equals("fan2")) ? 2 : name.equals("curl3D") ? 3 : name.equals("julia3D") ? 1 : 0;
         if (paramCount > 0) {
           Object[] params = v.getFunc().getParameterValues();
           if (params.length != paramCount) throw new AssertionError("unexpected parameter count for " + name);
