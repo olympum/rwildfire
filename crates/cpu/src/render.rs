@@ -397,12 +397,35 @@ pub fn render_with_raster(
     quality: usize,
     capture: impl FnOnce(&[Bin]) -> Result<(), String>,
 ) -> Result<Vec<u8>, String> {
+    render_bounded(scene, width, height, quality, 200_000_000, capture)
+}
+
+/// Capture the fixed TINA quality-500 layout without raising the preview cap.
+#[doc(hidden)]
+pub fn render_quality_500_with_raster(
+    scene: &Scene,
+    capture: impl FnOnce(&[Bin]) -> Result<(), String>,
+) -> Result<Vec<u8>, String> {
+    if (scene.width, scene.height, scene.filter_radius) != (466, 331, 1.0) {
+        return Err("quality-500 parity requires a 466×331 source and filter radius 1".into());
+    }
+    render_bounded(scene, 932, 662, 500, 311_688_000, capture)
+}
+
+fn render_bounded(
+    scene: &Scene,
+    width: usize,
+    height: usize,
+    quality: usize,
+    cap: usize,
+    capture: impl FnOnce(&[Bin]) -> Result<(), String>,
+) -> Result<Vec<u8>, String> {
     if scene.filter_radius != 0.0 && scene.filter_radius != 1.0 {
         return Err("only filter radii 0 and 1 are supported".into());
     }
     let filter = Kernel::mitchell_smooth(scene.filter_radius);
     let border = filter.border();
-    let samples = sample_budget(width, height, quality, border)?;
+    let samples = sample_budget(width, height, quality, border, cap)?;
     let stride = width + 2 * border;
     let mut sampler = Sampler::with_border(scene, width, height, border);
     let mut raster = vec![Bin::default(); stride * (height + 2 * border)];
@@ -502,13 +525,13 @@ fn shade(
     pixels
 }
 
-fn sample_budget(w: usize, h: usize, q: usize, border: usize) -> Result<usize, String> {
+fn sample_budget(w: usize, h: usize, q: usize, border: usize, cap: usize) -> Result<usize, String> {
     if !(1..=4096).contains(&w) || !(1..=4096).contains(&h) || q == 0 {
         return Err("width and height must be 1..=4096; quality must be positive".into());
     }
     let count = (w + 2 * border) * (h + 2 * border);
     match count.checked_mul(q) {
-        Some(samples) if samples <= 200_000_000 => Ok(samples),
-        _ => Err("preview sample budget exceeds 200,000,000".into()),
+        Some(samples) if samples <= cap => Ok(samples),
+        _ => Err(format!("sample budget exceeds {cap} iterations")),
     }
 }

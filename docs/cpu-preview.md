@@ -39,3 +39,14 @@ changes the image. The unfiltered TINA0010 path still uses a shared raster
 and rejects a one-channel mutation. Successful runs retain the rasters,
 images, differences, and provenance. The probes use one seeded stream with
 sampling antialiasing disabled; they do not test thread or RNG scheduling.
+
+## Quality-500 parity
+
+    JAVA_HOME=/path/to/jdk8 scripts/check-cpu-scene --quality-500 /path/to/JWildfire
+
+This opt-in mode replaces the standard image comparisons with TINA0027–0031 and
+TINA0033. Each uses 311,688,000 samples at the original quality of 500, with a
+936×666 padded raster and 932×662 output. The ordinary preview retains its
+200,000,000-iteration cap; the high-budget path is fixed to this layout and quality.
+The gate compares every padded bin and RGB pixel and checks that the ordinary cap
+rejects the same request. Push and PR CI keep the standard gate.

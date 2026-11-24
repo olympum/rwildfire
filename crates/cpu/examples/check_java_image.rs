@@ -1,4 +1,4 @@
-use rwildfire_cpu::{render_with_raster, scene::parse};
+use rwildfire_cpu::{render_quality_500_with_raster, render_with_raster, scene::parse};
 use std::{
     error::Error,
     fs::{self, File},
@@ -30,14 +30,9 @@ fn read_png(path: &Path) -> Result<Image, Box<dyn Error>> {
     Ok(([info.width, info.height], pixels))
 }
 
-fn capture(
-    flame: &Path,
-    work: &Path,
-    quality: u32,
-    unfiltered: bool,
-) -> Result<(), Box<dyn Error>> {
+fn capture(flame: &Path, work: &Path, quality: u32, mode: &str) -> Result<(), Box<dyn Error>> {
     let mut scene = parse(&fs::read_to_string(flame)?)?;
-    if unfiltered {
+    if mode == "unfiltered" {
         scene.filter_radius = 0.0;
     }
     let size = [(scene.width * 2) as u32, (scene.height * 2) as u32];
@@ -45,25 +40,33 @@ fn capture(
     for value in [size[0], size[1], quality] {
         raster.write_all(&value.to_be_bytes())?;
     }
-    let pixels = render_with_raster(
-        &scene,
-        size[0] as usize,
-        size[1] as usize,
-        quality as usize,
-        |bins| {
-            for bin in bins {
+    let capture = |bins: &[rwildfire_cpu::Bin]| {
+        for bin in bins {
+            raster
+                .write_all(&bin.count.to_be_bytes())
+                .map_err(|e| e.to_string())?;
+            for sum in bin.rgb {
                 raster
-                    .write_all(&bin.count.to_be_bytes())
+                    .write_all(&sum.to_be_bytes())
                     .map_err(|e| e.to_string())?;
-                for sum in bin.rgb {
-                    raster
-                        .write_all(&sum.to_be_bytes())
-                        .map_err(|e| e.to_string())?;
-                }
             }
-            Ok(())
-        },
-    )?;
+        }
+        Ok(())
+    };
+    let pixels = if mode == "quality-500" {
+        if quality != 500 {
+            return Err("quality-500 capture requires quality 500".into());
+        }
+        render_quality_500_with_raster(&scene, capture)?
+    } else {
+        render_with_raster(
+            &scene,
+            size[0] as usize,
+            size[1] as usize,
+            quality as usize,
+            capture,
+        )?
+    };
     raster.flush()?;
     write_png(&work.join("rust.png"), size, &pixels)
 }
@@ -128,16 +131,16 @@ fn compare(work: &Path, mode: &str) -> Result<bool, Box<dyn Error>> {
 fn run() -> Result<bool, Box<dyn Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.as_slice() {
-        [mode, flame, work, quality] if mode == "filtered" || mode == "unfiltered" => {
+        [mode, flame, work, quality] if matches!(mode.to_str(), Some("filtered" | "unfiltered" | "quality-500")) => {
             let quality = quality.to_str().ok_or("invalid quality")?.parse()?;
-            capture(Path::new(flame), Path::new(work), quality, mode == "unfiltered")?;
+            capture(Path::new(flame), Path::new(work), quality, mode.to_str().unwrap())?;
             Ok(true)
         }
         [mode, work] if mode == "compare" || mode == "mutate" || mode == "omit" => {
             compare(Path::new(work), mode.to_str().unwrap())
         }
         _ => Err(
-            "usage: check_java_image filtered|unfiltered FLAME WORK_DIR QUALITY | compare|mutate|omit WORK_DIR"
+            "usage: check_java_image filtered|unfiltered|quality-500 FLAME WORK_DIR QUALITY | compare|mutate|omit WORK_DIR"
                 .into(),
         ),
     }
