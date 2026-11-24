@@ -41,6 +41,8 @@ pub enum VariationKind {
     Curl3D { cx: f64, cy: f64, cz: f64 },
     Heart,
     Horseshoe,
+    Fan2 { x: f64, y: f64 },
+    Diamond,
 }
 
 impl VariationKind {
@@ -59,6 +61,8 @@ impl VariationKind {
             Self::Curl3D { .. } => "curl3D",
             Self::Heart => "heart",
             Self::Horseshoe => "horseshoe",
+            Self::Fan2 { .. } => "fan2",
+            Self::Diamond => "diamond",
         }
     }
 }
@@ -236,6 +240,10 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "curl3D_cz",
                 "heart",
                 "horseshoe",
+                "fan2",
+                "fan2_x",
+                "fan2_y",
+                "diamond",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -273,6 +281,11 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         {
             return Err("curl3D parameters require a curl3D variation".into());
         }
+        if c.attribute("fan2").is_none()
+            && (c.attribute("fan2_x").is_some() || c.attribute("fan2_y").is_some())
+        {
+            return Err("fan2 parameters require a fan2 variation".into());
+        }
         // AbstractFlameReader inserts variations as it walks XML attributes;
         // XForm evaluates the supported priority-zero variations in that order.
         let mut variations = Vec::new();
@@ -294,6 +307,11 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "swirl" => VariationKind::Swirl,
                 "heart" => VariationKind::Heart,
                 "horseshoe" => VariationKind::Horseshoe,
+                "fan2" => VariationKind::Fan2 {
+                    x: number(c, "fan2_x", 0.5)?,
+                    y: number(c, "fan2_y", 1.2)?,
+                },
+                "diamond" => VariationKind::Diamond,
                 "curl3D" => VariationKind::Curl3D {
                     cx: number(c, "curl3D_cx", 0.0)?,
                     cy: number(c, "curl3D_cy", 0.05)?,

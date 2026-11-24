@@ -52,6 +52,7 @@ fn verify(xml: &str, reference: &str) {
                 VariationKind::Pdj { a, b, c, d } => vec![v.amount, a, b, c, d],
                 VariationKind::Rectangles { x, y } => vec![v.amount, x, y],
                 VariationKind::Curl3D { cx, cy, cz } => vec![v.amount, cx, cy, cz],
+                VariationKind::Fan2 { x, y } => vec![v.amount, x, y],
                 _ => vec![v.amount],
             };
             exact(
