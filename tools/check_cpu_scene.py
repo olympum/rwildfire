@@ -96,7 +96,7 @@ def capture(source, quality_500):
                    cwd=oracle.ROOT, check=True, timeout=120)
     provenance["julia_pow"] = {"probe_sha256": oracle.sha256_file(pow_probe),
                                "trace_sha256": oracle.sha256_file(pow_trace)}
-    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017", "TINA0020", "TINA0022", "TINA0014", "TINA0019", "TINA0024")
+    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017", "TINA0020", "TINA0022", "TINA0014", "TINA0019", "TINA0024", "TINA0026")
     powers = {"TINA0014": 2, "TINA0019": -3, "TINA0024": 5}
     inputs = work / "inputs"
     inputs.mkdir()
@@ -161,6 +161,7 @@ def capture(source, quality_500):
         ("TINA0014", (932, 662, 100), "filtered"),
         ("TINA0019", (932, 662, 100), "filtered"),
         ("TINA0024", (932, 662, 100), "filtered"),
+        ("TINA0026", (932, 662, 100), "filtered"),
         ("TINA0004", (932, 662, 3), "filtered"),
         ("TINA0006", (932, 662, 100), "filtered"),
         ("TINA0008", (1014, 668, 100), "filtered"),

@@ -25,6 +25,7 @@ public class SceneV1Probe {
     FlameRendererView view = new FlameRendererView(Stereo3dEye.UNSPECIFIED, f, rng, 0, w, h, w, h, ctx, null);
     PrintWriter out = new PrintWriter(args[1], StandardCharsets.UTF_8.name());
     out.printf(Locale.ROOT,"scene %d %d %s %s %s %s %s %s %s %s%n",f.getWidth(),f.getHeight(),f.getPixelsPerUnit(),f.getCamZoom(),f.getCentreX(),f.getCentreY(),f.getBrightness(),f.getGamma(),f.getGammaThreshold(),f.getCamRoll());
+    out.printf(Locale.ROOT, "camera %s %s %s%n", f.getCamPitch(), f.getCamYaw(), f.getCamPerspective());
     for (XForm x : xf) {
       out.printf(Locale.ROOT,"xform %s %s %s %s %s %s %s %s %s%n",x.getWeight(),x.getColor(),x.getColorSymmetry(),x.getXYCoeff00(),x.getXYCoeff01(),x.getXYCoeff10(),x.getXYCoeff11(),x.getXYCoeff20(),x.getXYCoeff21());
       for (Variation v : x.getVariations()) {
@@ -55,14 +56,22 @@ public class SceneV1Probe {
     XYZProjectedPoint prj=new XYZProjectedPoint(0);
     PlotSample s=new PlotSample(); PlotSample[] samples={s};
     Set<Integer> bins=new TreeSet<>();
+    XYZPoint plot = new XYZPoint();
+    if (f.is3dProjectionRequired()) {
+      for (double depth : new double[]{-0.5, 0.0, 0.5, 1.0, 2.0}) {
+        for (double[] xy : new double[][]{{0.0, 0.0}, {1.0, -1.0}, {-1.0, 1.0}, {4.0, 0.0}}) {
+          plot.x = xy[0]; plot.y = xy[1]; plot.z = depth;
+          int[] pixel = pixel(view, plot, prj, w, h);
+          out.printf(Locale.ROOT, "project %s %s %s %d %d%n", xy[0], xy[1], depth, pixel[0], pixel[1]);
+        }
+      }
+    }
     for (int i=0;i<256;i++) {
       current=current.getNextAppliedXFormTable()[rng.random(Constants.NEXT_APPLIED_XFORM_TABLE_SIZE)];
       current.transformPoint(ctx,aff,var,p,p);
-      int px=-1,py=-1;
-      if (view.project(p,prj)) {
-        px=(int)(view.getBws()*prj.x+0.5); py=(int)(view.getBhs()*prj.y+0.5);
-        if(px<0 || px>=w || py<0 || py>=h) {px=-1;py=-1;}
-      }
+      plot.assign(p);
+      int[] pixel = pixel(view, plot, prj, w, h);
+      int px = pixel[0], py = pixel[1];
       out.printf(Locale.ROOT,"point %d %s %s %s %s %d %d%n",xf.indexOf(current),p.x,p.y,p.z,p.color,px,py);
       if(px>=0) {
         s.screenX=px; s.screenY=py; s.r=p.redColor; s.g=p.greenColor; s.b=p.blueColor;
@@ -76,5 +85,13 @@ public class SceneV1Probe {
     }
     out.close();
     if(out.checkError()) throw new AssertionError("trace write failed");
+  }
+
+  private static int[] pixel(FlameRendererView view, XYZPoint plot, XYZProjectedPoint prj, int w, int h) {
+    if (view.project(plot, prj)) {
+      int x = (int)(view.getBws()*prj.x+0.5), y = (int)(view.getBhs()*prj.y+0.5);
+      if (x >= 0 && x < w && y >= 0 && y < h) return new int[]{x, y};
+    }
+    return new int[]{-1, -1};
   }
 }
