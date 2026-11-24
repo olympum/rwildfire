@@ -57,10 +57,11 @@ def capture(source):
     probe = oracle.ROOT / "oracle/SceneV1Probe.java"
     image_probe = oracle.ROOT / "oracle/ImageV1Probe.java"
     raster_probe = oracle.ROOT / "oracle/PaddedRasterProbe.java"
+    trig_probe = oracle.ROOT / "oracle/TrigProbe.java"
     cp = oracle.classpath(export)
     subprocess.run([
         jdk["javac"], "-encoding", "ISO-8859-1", "-proc:none", "-cp", cp,
-        "-sourcepath", str(export / "src"), "-d", str(classes), str(probe), str(image_probe), str(raster_probe),
+        "-sourcepath", str(export / "src"), "-d", str(classes), str(probe), str(image_probe), str(raster_probe), str(trig_probe),
     ], cwd=oracle.ROOT, check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
@@ -73,7 +74,16 @@ def capture(source):
         "seed": 741103597,
         "scenes": {},
     }
-    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015")
+    trig_trace = work / "trig.txt"
+    with trig_trace.open("wb") as stdout:
+        subprocess.run([jdk["java"], "-cp", runtime_cp, "TrigProbe"], stdout=stdout,
+                       cwd=oracle.ROOT, check=True, timeout=30)
+    subprocess.run(["cargo", "run", "--locked", "-p", "rwildfire-cpu", "--example",
+                    "check_java_trig", "--", str(trig_trace)],
+                   cwd=oracle.ROOT, check=True, timeout=120)
+    provenance["trig"] = {"probe_sha256": oracle.sha256_file(trig_probe),
+                          "trace_sha256": oracle.sha256_file(trig_trace)}
+    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015", "TINA0023", "TINA0025", "TINA0032")
     scenes = [(name, export / "resources/flames" / (name + ".flame")) for name in names]
     synthetic = oracle.ROOT / "fixtures" / "ordered-variations.flame"
     for name, scene in [*scenes, (synthetic.stem, synthetic)]:
@@ -108,6 +118,9 @@ def capture(source):
         ("TINA0007", (932, 662, 100), "filtered"),
         ("TINA0005", (932, 662, 3), "filtered"),
         ("TINA0015", (932, 662, 3), "filtered"),
+        ("TINA0023", (932, 662, 100), "filtered"),
+        ("TINA0025", (932, 662, 100), "filtered"),
+        ("TINA0032", (932, 662, 3), "filtered"),
         ("TINA0004", (932, 662, 3), "filtered"),
         ("TINA0006", (932, 662, 100), "filtered"),
         ("TINA0008", (1014, 668, 100), "filtered"),

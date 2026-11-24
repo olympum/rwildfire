@@ -1,6 +1,8 @@
+mod angle_reduce;
 mod fast_atan;
 mod fast_sin;
 mod fast_sqrt;
+mod fast_tan;
 mod filter;
 mod render;
 pub mod scene;
