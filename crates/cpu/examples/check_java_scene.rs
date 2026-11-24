@@ -52,6 +52,7 @@ fn verify(xml: &str, reference: &str) {
                 VariationKind::Pdj { a, b, c, d } => vec![v.amount, a, b, c, d],
                 VariationKind::Rectangles { x, y } => vec![v.amount, x, y],
                 VariationKind::Curl3D { cx, cy, cz } => vec![v.amount, cx, cy, cz],
+                VariationKind::Julia3D { power } => vec![v.amount, f64::from(power)],
                 VariationKind::Fan2 { x, y } => vec![v.amount, x, y],
                 _ => vec![v.amount],
             };
@@ -115,9 +116,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009",
         "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005",
         "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017",
-        "TINA0020", "TINA0022",
+        "TINA0020", "TINA0022", "TINA0014", "TINA0019", "TINA0024",
     ] {
-        let xml = std::fs::read_to_string(source.join(format!("{name}.flame")))?;
+        let filename = format!("{name}.flame");
+        let controlled = captures.join("inputs").join(&filename);
+        let path = if controlled.is_file() {
+            let original = std::fs::read_to_string(source.join(&filename))?;
+            assert!(
+                matches!(parse(&original), Err(reason) if reason.contains("julia3D_power")),
+                "{name} should reject omitted power"
+            );
+            controlled
+        } else {
+            source.join(&filename)
+        };
+        let xml = std::fs::read_to_string(path)?;
         let trace = std::fs::read_to_string(captures.join(format!("{name}.txt")))?;
         println!("{name}: comparing Rust against fresh Java scene trace");
         verify(&xml, &trace);

@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -58,10 +59,11 @@ def capture(source):
     image_probe = oracle.ROOT / "oracle/ImageV1Probe.java"
     raster_probe = oracle.ROOT / "oracle/PaddedRasterProbe.java"
     trig_probe = oracle.ROOT / "oracle/TrigProbe.java"
+    pow_probe = oracle.ROOT / "oracle/JuliaPowProbe.java"
     cp = oracle.classpath(export)
     subprocess.run([
         jdk["javac"], "-encoding", "ISO-8859-1", "-proc:none", "-cp", cp,
-        "-sourcepath", str(export / "src"), "-d", str(classes), str(probe), str(image_probe), str(raster_probe), str(trig_probe),
+        "-sourcepath", str(export / "src"), "-d", str(classes), str(probe), str(image_probe), str(raster_probe), str(trig_probe), str(pow_probe),
     ], cwd=oracle.ROOT, check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
@@ -83,17 +85,45 @@ def capture(source):
                    cwd=oracle.ROOT, check=True, timeout=120)
     provenance["trig"] = {"probe_sha256": oracle.sha256_file(trig_probe),
                           "trace_sha256": oracle.sha256_file(trig_trace)}
-    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017", "TINA0020", "TINA0022")
-    scenes = [(name, export / "resources/flames" / (name + ".flame")) for name in names]
+    pow_trace = work / "julia-pow.txt"
+    with pow_trace.open("wb") as stdout:
+        subprocess.run([jdk["java"], "-cp", runtime_cp, "JuliaPowProbe"], stdout=stdout,
+                       cwd=oracle.ROOT, check=True, timeout=60)
+    subprocess.run(["cargo", "run", "--locked", "-p", "rwildfire-cpu", "--example",
+                    "check_java_julia_pow", "--", str(pow_trace)],
+                   cwd=oracle.ROOT, check=True, timeout=120)
+    provenance["julia_pow"] = {"probe_sha256": oracle.sha256_file(pow_probe),
+                               "trace_sha256": oracle.sha256_file(pow_trace)}
+    names = ("TINA0010", "TINA0004", "TINA0006", "TINA0008", "TINA0011", "TINA0021", "TINA0009", "TINA0018", "TINA0013", "TINA0016", "TINA0003", "TINA0001", "TINA0007", "TINA0005", "TINA0015", "TINA0023", "TINA0025", "TINA0032", "TINA0002", "TINA0012", "TINA0017", "TINA0020", "TINA0022", "TINA0014", "TINA0019", "TINA0024")
+    powers = {"TINA0014": 2, "TINA0019": -3, "TINA0024": 5}
+    inputs = work / "inputs"
+    inputs.mkdir()
+    scenes = {}
+    for name in names:
+        scene = export / "resources/flames" / (name + ".flame")
+        if name in powers:
+            original = scene.read_bytes()
+            if b"julia3D_power=" in original:
+                raise oracle.OracleError(f"{name}: expected omitted julia3D power")
+            patched, count = re.subn(rb'( julia3D="[^"]+")',
+                                     lambda match: match[0] + f' julia3D_power="{powers[name]}"'.encode(), original)
+            if count != 1:
+                raise oracle.OracleError(f"{name}: expected exactly one julia3D attribute")
+            scene = inputs / scene.name
+            scene.write_bytes(patched)
+            provenance["scenes"][name] = {"original_sha256": oracle.sha256_file(export / "resources/flames" / scene.name),
+                                           "pinned_julia3D_power": powers[name]}
+        scenes[name] = scene
     synthetic = oracle.ROOT / "fixtures" / "ordered-variations.flame"
-    for name, scene in [*scenes, (synthetic.stem, synthetic)]:
+    for name, scene in [*scenes.items(), (synthetic.stem, synthetic)]:
         trace = work / (name + ".txt")
         with (work / (name + ".stdout")).open("wb") as stdout, (work / (name + ".stderr")).open("wb") as stderr:
             subprocess.run([
                 jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
                 "-cp", runtime_cp, "SceneV1Probe", str(scene), str(trace),
             ], cwd=oracle.ROOT, stdout=stdout, stderr=stderr, check=True, timeout=120)
-        provenance["scenes"][name] = {"input_sha256": oracle.sha256_file(scene), "trace_sha256": oracle.sha256_file(trace)}
+        provenance["scenes"].setdefault(name, {}).update(input_sha256=oracle.sha256_file(scene),
+                                                       trace_sha256=oracle.sha256_file(trace))
     subprocess.run([
         "cargo", "run", "--locked", "-p", "rwildfire-cpu", "--example", "check_java_scene",
         "--", str(export), str(work), str(synthetic),
@@ -126,11 +156,14 @@ def capture(source):
         ("TINA0017", (932, 662, 3), "filtered"),
         ("TINA0020", (932, 662, 100), "filtered"),
         ("TINA0022", (932, 662, 100), "filtered"),
+        ("TINA0014", (932, 662, 100), "filtered"),
+        ("TINA0019", (932, 662, 100), "filtered"),
+        ("TINA0024", (932, 662, 100), "filtered"),
         ("TINA0004", (932, 662, 3), "filtered"),
         ("TINA0006", (932, 662, 100), "filtered"),
         ("TINA0008", (1014, 668, 100), "filtered"),
     ):
-        flame = export / "resources/flames" / (name + ".flame")
+        flame = scenes[name]
         provenance["image"].setdefault(name, {})
         shade = [*java, "ImageV1Probe", str(flame)]
         image = work / name / mode

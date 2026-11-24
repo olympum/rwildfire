@@ -135,6 +135,22 @@ impl Point {
                     x += amount * radius * crate::fast_sin::sin(a);
                     y += amount * radius * crate::fast_sin::cos(a);
                 }
+                VariationKind::Julia3D { power } => {
+                    let power = f64::from(power);
+                    let abs_power = power.abs();
+                    let depth = self.z / abs_power;
+                    let xy2 = ax * ax + ay * ay;
+                    let radius = amount
+                        * crate::fast_pow::pow(xy2 + depth * depth, (1.0 / power - 1.0) * 0.5);
+                    let xy = radius * crate::fast_sqrt::sqrt(xy2);
+                    let branch = (rng.next() * abs_power) as i32;
+                    let angle = (crate::fast_atan::atan2(ay, ax)
+                        + std::f64::consts::TAU * f64::from(branch))
+                        / power;
+                    x += xy * crate::fast_sin::cos(angle);
+                    y += xy * crate::fast_sin::sin(angle);
+                    z += radius * depth;
+                }
                 VariationKind::Blur => {
                     let angle = rng.next() * std::f64::consts::TAU;
                     let radius = amount * rng.next();

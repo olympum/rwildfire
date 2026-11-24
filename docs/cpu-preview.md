@@ -4,9 +4,16 @@
 
 The preview reads original flame XML directly. It supports legacy single-layer
 2D scenes with an RGB palette, camera roll, weighted XY transforms, and the
-`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, `hemisphere`, `swirl`, `rectangles`, `curl3D`, `heart`, `horseshoe`, `fan2`, `diamond`, `popcorn`, `blur`, and `blur3D` variations. Fan2 reads `fan2_x` and `fan2_y`, defaulting to `(0.5, 1.2)`. Curl3D reads `curl3D_cx`, `curl3D_cy`, and `curl3D_cz`, defaulting to `(0, 0.05, 0.05)`. Rectangles takes `rectangles_x` and `rectangles_y`, defaulting to `0.3` and `0.2`. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
+`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, `hemisphere`, `swirl`, `rectangles`, `curl3D`, `heart`, `horseshoe`, `fan2`, `diamond`, `popcorn`, `blur`, `blur3D`, and `julia3D` variations. Fan2 reads `fan2_x` and `fan2_y`, defaulting to `(0.5, 1.2)`. Curl3D reads `curl3D_cx`, `curl3D_cy`, and `curl3D_cz`, defaulting to `(0, 0.05, 0.05)`. Rectangles takes `rectangles_x` and `rectangles_y`, defaulting to `0.3` and `0.2`. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
 transforms, but the supported camera still projects only XY. The sine, cosine, and tangent ports use the pinned Java angle reduction. The parity gate compares those functions against Java across small and large arguments, including near tangent poles. Supported variations accumulate in the order JWildfire loads them from
 legacy XML. Priority overrides and indexed variation names remain unsupported. The legacy XML `rotate` value is read in degrees, as in JWildfire.
+`julia3D` requires a nonzero explicit `julia3D_power`. The original TINA0014,
+TINA0019, and TINA0024 omit it, so the gate makes temporary copies pinning
+powers 2, −3, and 5 respectively. Java normally initializes omitted power
+with `Math.random()`, outside the seeded sampler. The comparisons establish
+parity at those explicit powers, not repeatability of unmodified Java loads.
+The gate records the original and modified input hashes.
+
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
 intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute

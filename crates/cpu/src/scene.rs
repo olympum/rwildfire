@@ -46,6 +46,7 @@ pub enum VariationKind {
     Popcorn,
     Blur,
     Blur3D,
+    Julia3D { power: i32 },
 }
 
 impl VariationKind {
@@ -69,6 +70,7 @@ impl VariationKind {
             Self::Popcorn => "popcorn",
             Self::Blur => "blur",
             Self::Blur3D => "blur3D",
+            Self::Julia3D { .. } => "julia3D",
         }
     }
 }
@@ -253,6 +255,8 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "popcorn",
                 "blur",
                 "blur3D",
+                "julia3D",
+                "julia3D_power",
             ],
         )?;
         if !child_elements(c)?.is_empty() {
@@ -295,6 +299,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         {
             return Err("fan2 parameters require a fan2 variation".into());
         }
+        if c.attribute("julia3D").is_none() && c.attribute("julia3D_power").is_some() {
+            return Err("julia3D_power requires a julia3D variation".into());
+        }
         // AbstractFlameReader inserts variations as it walks XML attributes;
         // XForm evaluates the supported priority-zero variations in that order.
         let mut variations = Vec::new();
@@ -324,6 +331,14 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "popcorn" => VariationKind::Popcorn,
                 "blur" => VariationKind::Blur,
                 "blur3D" => VariationKind::Blur3D,
+                "julia3D" => {
+                    let power = finite(&required(c, "julia3D_power")?, "julia3D_power")?;
+                    let power = ((power.abs() + 0.5).copysign(power)) as i32;
+                    if power == 0 {
+                        return Err("julia3D_power rounds to zero".into());
+                    }
+                    VariationKind::Julia3D { power }
+                }
                 "curl3D" => VariationKind::Curl3D {
                     cx: number(c, "curl3D_cx", 0.0)?,
                     cy: number(c, "curl3D_cy", 0.05)?,
