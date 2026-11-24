@@ -4,8 +4,8 @@
 
 The preview reads original flame XML directly. It supports legacy single-layer
 2D scenes with an RGB palette, camera roll, weighted XY transforms, and the
-`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, `hemisphere`, `swirl`, `rectangles`, `curl3D`, `heart`, and `horseshoe` variations. Curl3D reads `curl3D_cx`, `curl3D_cy`, and `curl3D_cz`, defaulting to `(0, 0.05, 0.05)`. Rectangles takes `rectangles_x` and `rectangles_y`, defaulting to `0.3` and `0.2`. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
-transforms, but the supported camera still projects only XY. For trigonometric arguments in `waves`, `spiral`, `pdj`, `disc`, `swirl`, or `heart` above
+`linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, `hemisphere`, `swirl`, `rectangles`, `curl3D`, `heart`, `horseshoe`, `fan2`, and `diamond` variations. Fan2 reads `fan2_x` and `fan2_y`, defaulting to `(0.5, 1.2)`. Curl3D reads `curl3D_cx`, `curl3D_cy`, and `curl3D_cz`, defaulting to `(0, 0.05, 0.05)`. Rectangles takes `rectangles_x` and `rectangles_y`, defaulting to `0.3` and `0.2`. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
+transforms, but the supported camera still projects only XY. For trigonometric arguments in `waves`, `spiral`, `pdj`, `disc`, `swirl`, `heart`, `fan2`, or `diamond` above
 about 12,739 radians in magnitude, Rust uses its standard trigonometric functions instead of
 Java’s large-angle reduction. For `waves`, small or zero affine translations can reach that range; for
 `spiral`, the argument is the length of the affine XY point. Supported variations accumulate in the order JWildfire loads them from
@@ -26,7 +26,7 @@ check separately with JDK 8 and a clean checkout of the pinned revision:
 The probe uses Java model decoding, transform tables, point transforms, view
 projection and raster accumulation. It compares decoded values, 256 points and
 all occupied bins in that window per scene, without filtering or antialiasing.
-A synthetic trace checks ordered variation accumulation, explicit PDJ, rectangles, and curl3D parameters, and the horseshoe transform.
+A synthetic trace checks ordered variation accumulation, explicit PDJ, rectangles, and curl3D parameters, and the horseshoe, fan2 (default and explicit parameters), and diamond transforms.
 For every scene listed above, Java and Rust independently generate seeded
 padded rasters at the original quality with radius-1 filtering. The gate compares every bin’s
 count and float sums bit-for-bit, then compares every decoded RGB pixel.

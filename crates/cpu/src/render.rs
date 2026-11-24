@@ -114,6 +114,27 @@ impl Point {
                     y += r * (ay - cy * r2);
                     z += r * (az + cz * r2);
                 }
+                VariationKind::Fan2 { x: fan_x, y: fan_y } => {
+                    let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay);
+                    let angle = if ax.abs() > 1.0e-300 || ay.abs() > 1.0e-300 {
+                        crate::fast_atan::atan2(ax, ay)
+                    } else {
+                        0.0
+                    };
+                    let dx = std::f64::consts::PI * (fan_x * fan_x) + 1.0e-300;
+                    let half = dx * 0.5;
+                    let shifted = angle + fan_y;
+                    // Java narrows the quotient to a 32-bit integer before multiplying.
+                    let t = shifted - f64::from((shifted / dx) as i32) * dx;
+                    let a = if t > half { angle - half } else { angle + half };
+                    x += amount * radius * crate::fast_sin::sin(a);
+                    y += amount * radius * crate::fast_sin::cos(a);
+                }
+                VariationKind::Diamond => {
+                    let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay) + 1.0e-300;
+                    x += amount * (ax / radius) * crate::fast_sin::cos(radius);
+                    y += amount * (ay / radius) * crate::fast_sin::sin(radius);
+                }
                 VariationKind::Horseshoe => {
                     let radius = crate::fast_sqrt::sqrt(ax * ax + ay * ay) + 1.0e-300;
                     let sin_a = ax / radius;
