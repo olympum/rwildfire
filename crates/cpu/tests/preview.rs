@@ -48,6 +48,7 @@ fn resolved_still_reports_padding_and_starts_a_fresh_job_per_render() {
         (84, 64, 2)
     );
     assert_eq!(settings.sample_budget, 86_016);
+    assert_eq!(settings.pixels_per_unit, 24.0);
     assert_eq!(settings.filter_radius, 1.0);
     let first = still.render().unwrap();
     let other = RenderRequest::new(80, 60, 16, 42)

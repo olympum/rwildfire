@@ -274,7 +274,14 @@ pub struct Sampler<'a> {
 
 impl<'a> Sampler<'a> {
     pub fn new(scene: &'a Scene, width: usize, height: usize) -> Self {
-        Self::with_border(scene, width, height, 0, PREVIEW_SEED)
+        Self::with_border(
+            scene,
+            width,
+            height,
+            0,
+            PREVIEW_SEED,
+            pixels_per_unit(scene, width, height),
+        )
     }
 
     fn with_border(
@@ -283,6 +290,7 @@ impl<'a> Sampler<'a> {
         height: usize,
         border: usize,
         seed: i64,
+        ppu: f64,
     ) -> Self {
         let mut rng = Marsaglia::seeded(seed);
         // Java initializes each ordinary variation in xform order before drawing the first point.
@@ -312,7 +320,6 @@ impl<'a> Sampler<'a> {
             let index = select(&mut rng, &table);
             state.apply(&scene.transforms[index], &mut rng, &mut blur3d[index]);
         }
-        let ppu = pixels_per_unit(scene, width, height);
         let image = [width, height];
         let size = image.map(|n| n + 2 * border);
         let border_units = border as f64 / ppu;
@@ -442,6 +449,7 @@ pub struct RenderRequest {
     pub height: usize,
     pub quality: usize,
     /// JWildfire Marsaglia seed; only the low 16 bits affect initialization.
+    /// A zero low word intentionally gives Java's all-zero stream.
     pub seed: i64,
 }
 
@@ -507,9 +515,11 @@ impl ResolvedStill<'_> {
             raster_height,
             border,
             sample_budget,
+            pixels_per_unit,
             ..
         } = self.settings;
-        let mut sampler = Sampler::with_border(self.scene, width, height, border, seed);
+        let mut sampler =
+            Sampler::with_border(self.scene, width, height, border, seed, pixels_per_unit);
         let mut raster = vec![Bin::default(); raster_width * raster_height];
         for _ in 0..sample_budget {
             let sample = sampler.step();
@@ -523,6 +533,7 @@ impl ResolvedStill<'_> {
             width,
             height,
             quality,
+            pixels_per_unit,
             &raster,
             &self.filter,
         ))
@@ -607,12 +618,12 @@ fn shade(
     width: usize,
     height: usize,
     quality: usize,
+    ppu: f64,
     raster: &[Bin],
     filter: &Kernel,
 ) -> Vec<u8> {
     const WHITE_LEVEL: f64 = 220.0;
     const LOW_DENSITY_BRIGHTNESS: f64 = 0.24;
-    let ppu = pixels_per_unit(scene, width, height);
     let area = (width * height) as f64 / (ppu * ppu);
     let k1 = 2.0 * scene.brightness;
     let k2 = 1.0 / (area * quality as f64);
