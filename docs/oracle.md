@@ -16,6 +16,29 @@ The checkout is external. Nothing from upstream is vendored into this
 repository. `prepare` fetches the pinned commit into an ignored bare cache by
 default, or accepts an explicit clean checkout with `--source`.
 
+## Production CPU stills: java-whole-render-v1
+
+After preparing the pinned source, run `python3 tools/check_whole_render.py`
+(or append the path to a clean pinned checkout). The standard gate also runs it.
+The probe calls unmodified Java's `FlameRenderer.renderFlame` in production mode
+and retains its padded float/int raster. It encodes the output to PNG and
+compares decoded RGB, not PNG container bytes.
+
+TINA0010 (linear) and TINA0012 (includes blur3D) run at 160×120, quality 20,
+with the source filter radius and oversampling (1). The probe sets the average
+axis scale for the requested dimensions and disables legacy density estimation
+(which the source flames enable). It uses one worker and seeds the shared
+Marsaglia factory entry `MARSAGLIA#0` before constructing the renderer. Every
+capture has a fresh JVM and empty preference home. Each scene's two captures
+must have identical bins and RGB; a third capture at quality 21 must have more
+hits and a different raster. The budget reported here is calculated from the
+padded dimensions and requested quality, not a worker instrumentation counter.
+
+Artifacts, including PNGs, binary captures, per-process logs, and provenance with
+input and output hashes, are kept under the reported ignored artifact directory.
+This proves controlled Java-to-Java repeatability, not Rust production-render
+parity or reproducibility under Java's default worker and RNG settings.
+
 ## Toolchain
 
 A JDK 8 must be supplied by the caller. The oracle never downloads a JDK and

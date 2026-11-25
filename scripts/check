@@ -188,6 +188,9 @@ printf '\n== oracle prepare\n'
 printf '\n== fresh Java CPU scene comparison\n'
 scripts/check-cpu-scene
 
+printf '\n== Java production CPU render repeatability\n'
+python3 tools/check_whole_render.py
+
 # Two separate processes, each compiling the pinned Java oracle afresh.
 printf '\n== oracle capture A\n'
 "${CAPTURE_A[@]}"
