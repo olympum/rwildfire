@@ -40,6 +40,8 @@ Rust must match the Java padded bins and decoded RGB with legacy projection
 jitter enabled (amount 0.25, radius 0.5) and disabled (amount 0). The legacy
 preview API and CLI leave jitter off. This is controlled single-worker parity
 for these fixtures, not reproducibility under Java's default worker and RNG settings.
+The same comparisons also cover the repository-owned `chaos-transitions` fixture,
+with nonuniform destination weights and an omitted (all-ones) row.
 
 ## Toolchain
 

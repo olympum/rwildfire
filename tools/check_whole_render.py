@@ -71,8 +71,9 @@ def check(source):
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
-    for name in SCENES:
-        scene = export / "resources/flames" / (name + ".flame")
+    scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
+    scenes["chaos-transitions"] = oracle.ROOT / "fixtures/chaos-transitions.flame"
+    for name, scene in scenes.items():
         record = {"input_sha256": oracle.sha256_file(scene), "runs": {}}
 
         def run(label, quality, amount=AA_AMOUNT):

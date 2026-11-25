@@ -25,15 +25,20 @@ impl Marsaglia {
     }
 }
 
-fn table(transforms: &[Transform]) -> [usize; TABLE_SIZE] {
-    let total: f64 = transforms.iter().map(|t| t.weight).sum();
+fn table(transforms: &[Transform], chaos: Option<&[f64]>) -> [usize; TABLE_SIZE] {
+    let weights: Vec<_> = transforms
+        .iter()
+        .enumerate()
+        .map(|(i, t)| t.weight * chaos.map_or(1.0, |row| row[i]))
+        .collect();
+    let total: f64 = weights.iter().sum();
     let mut boundary = 0.0;
     std::array::from_fn(|_| {
         let mut cumulative = 0.0;
-        let selected = transforms
+        let selected = weights
             .iter()
-            .position(|t| {
-                cumulative += t.weight;
+            .position(|weight| {
+                cumulative += weight;
                 cumulative > boundary
             })
             .unwrap_or(transforms.len() - 1);
@@ -262,7 +267,8 @@ pub struct Sampler<'a> {
     state: Point,
     rng: Marsaglia,
     blur3d: Vec<Option<Blur3DState>>,
-    table: [usize; TABLE_SIZE],
+    tables: Vec<[usize; TABLE_SIZE]>,
+    previous: usize,
     size: [usize; 2],
     projection_offset: [f64; 2],
     camera_matrix: Option<[[f64; 3]; 3]>,
@@ -317,10 +323,16 @@ impl<'a> Sampler<'a> {
             color: rng.next(),
         };
         rng.next(); // Initial material draw, even for the ordinary color raster.
-        let table = table(&scene.transforms);
+        let tables: Vec<_> = scene
+            .transforms
+            .iter()
+            .map(|from| table(&scene.transforms, from.chaos.as_deref()))
+            .collect();
+        let mut previous = 0;
         state.apply(&scene.transforms[0], &mut rng, &mut blur3d[0]);
         for _ in 0..=42 {
-            let index = select(&mut rng, &table);
+            let index = select(&mut rng, &tables[previous]);
+            previous = index;
             state.apply(&scene.transforms[index], &mut rng, &mut blur3d[index]);
         }
         let image = [width, height];
@@ -354,7 +366,8 @@ impl<'a> Sampler<'a> {
             state,
             rng,
             blur3d,
-            table,
+            tables,
+            previous,
             size,
             projection_offset,
             camera_matrix,
@@ -367,7 +380,8 @@ impl<'a> Sampler<'a> {
     }
 
     pub fn step(&mut self) -> Sample {
-        let transform = select(&mut self.rng, &self.table);
+        let transform = select(&mut self.rng, &self.tables[self.previous]);
+        self.previous = transform;
         self.state.apply(
             &self.scene.transforms[transform],
             &mut self.rng,
