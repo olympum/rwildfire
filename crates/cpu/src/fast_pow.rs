@@ -17,7 +17,7 @@ pub(crate) fn pow(base: f64, exponent: f64) -> f64 {
     exp(exponent * log(base))
 }
 
-fn log(mut x: f64) -> f64 {
+pub(crate) fn log(mut x: f64) -> f64 {
     if x == 0.0 {
         return f64::NEG_INFINITY;
     }
@@ -56,7 +56,7 @@ fn log(mut x: f64) -> f64 {
         + (f64::from_bits(TABLES.0[index]) + e * (1.0 - e * (0.5 - e * (1.0 / 3.0))))
 }
 
-fn exp(x: f64) -> f64 {
+pub(crate) fn exp(x: f64) -> f64 {
     if x.is_nan() {
         return x;
     }

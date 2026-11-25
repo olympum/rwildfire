@@ -13,6 +13,7 @@ import oracle
 
 
 WIDTH, HEIGHT, QUALITY, SEED = 160, 120, 20, 741103597
+AA_AMOUNT, AA_RADIUS = 0.25, 0.5
 SCENES = ("TINA0010", "TINA0012")
 
 
@@ -36,6 +37,16 @@ def read_capture(prefix, quality):
     return raster, rgb, hits, budget
 
 
+def compare(reference, candidate, label):
+    for index, description in ((0, "padded raster"), (1, "decoded RGB")):
+        if reference[index] != candidate[index]:
+            start, stride, width = (8, 16, WIDTH + 4) if index == 0 else (0, 3, WIDTH)
+            a, b = reference[index], candidate[index]
+            first = next(i for i in range(start, len(a), stride) if a[i:i + stride] != b[i:i + stride])
+            y, x = divmod((first - start) // stride, width)
+            raise oracle.OracleError(f"{label}: {description} mismatch at ({x}, {y})")
+
+
 def check(source):
     info = oracle.resolve_source(source)
     export = oracle.CACHE / info["export"]
@@ -54,7 +65,7 @@ def check(source):
     ], check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
-        "suite": "java-whole-render-v1", "upstream_commit": info["upstream_commit"],
+        "suite": "whole-render-v2", "upstream_commit": info["upstream_commit"],
         "source_tree": info["source_tree"], "source_digest_sha256": info["source_digest_sha256"],
         "java_version": jdk["java_version"], "javac_version": jdk["javac_version"],
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
@@ -64,7 +75,7 @@ def check(source):
         scene = export / "resources/flames" / (name + ".flame")
         record = {"input_sha256": oracle.sha256_file(scene), "runs": {}}
 
-        def run(label, quality):
+        def run(label, quality, amount=AA_AMOUNT):
             prefix = work / f"{name}-{label}"
             home = prefix.with_suffix(".home")
             home.mkdir()
@@ -72,11 +83,12 @@ def check(source):
                 subprocess.run([
                     jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
                     "-cp", runtime_cp, "WholeRenderProbe", str(scene), str(prefix),
-                    str(WIDTH), str(HEIGHT), str(quality), str(SEED),
+                    str(WIDTH), str(HEIGHT), str(quality), str(SEED), str(amount), str(AA_RADIUS),
                 ], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
             raster, rgb, hits, budget = read_capture(prefix, quality)
             record["runs"][label] = {
                 "quality": quality, "hits": hits, "sample_budget": budget,
+                "antialias_amount": amount, "antialias_radius": AA_RADIUS,
                 **{suffix + "_sha256": oracle.sha256_file(prefix.with_suffix("." + suffix))
                    for suffix in ("raster", "rgb", "png")},
             }
@@ -95,6 +107,23 @@ def check(source):
             raise oracle.OracleError(f"{name}: extra sample budget did not increase raster hits")
         print(f"{name}: budget control {a[3]:,} -> {changed[3]:,} changed the raster "
               f"({a[2]:,} -> {changed[2]:,} hits)", flush=True)
+        disabled = run("no-aa", QUALITY, 0.0)
+        for mode, amount, reference in (("no-aa", 0.0, disabled), ("aa", AA_AMOUNT, a)):
+            prefix = work / f"{name}-rust-{mode}"
+            subprocess.run([
+                "cargo", "run", "--quiet", "--locked", "--release", "-p", "rwildfire-cpu",
+                "--example", "capture_whole_render", "--", str(scene), str(prefix),
+                str(WIDTH), str(HEIGHT), str(QUALITY), str(SEED), str(amount), str(AA_RADIUS),
+            ], check=True, timeout=120)
+            candidate = read_capture(prefix, QUALITY)
+            compare(reference, candidate, f"{name} {mode}")
+            record["runs"][f"rust-{mode}"] = {
+                "quality": QUALITY, "hits": candidate[2], "sample_budget": candidate[3],
+                "antialias_amount": amount, "antialias_radius": AA_RADIUS,
+                **{suffix + "_sha256": oracle.sha256_file(prefix.with_suffix("." + suffix))
+                   for suffix in ("raster", "rgb")},
+            }
+            print(f"{name} {mode}: Rust matches Java in 20,336 bins and 19,200 RGB pixels", flush=True)
         provenance["scenes"][name] = record
     (work / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
