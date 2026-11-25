@@ -33,6 +33,8 @@ public final class WholeRenderProbe {
     flame.setPixelsPerUnitScale((width / (double) flame.getWidth() + height / (double) flame.getHeight()) / 2.0);
     // Leave legacy density estimation out of this first still-render contract.
     flame.setDeRadius(0.0);
+    flame.setAntialiasAmount(Double.parseDouble(args[6]));
+    flame.setAntialiasRadius(Double.parseDouble(args[7]));
     if (flame.getSpatialOversampling() != 1 || flame.getLayers().size() != 1) {
       throw new AssertionError("expected single-layer oversampling-1 fixture");
     }

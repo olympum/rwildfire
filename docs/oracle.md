@@ -16,7 +16,7 @@ The checkout is external. Nothing from upstream is vendored into this
 repository. `prepare` fetches the pinned commit into an ignored bare cache by
 default, or accepts an explicit clean checkout with `--source`.
 
-## Production CPU stills: java-whole-render-v1
+## Production CPU stills: whole-render-v2
 
 After preparing the pinned source, run `python3 tools/check_whole_render.py`
 (or append the path to a clean pinned checkout). The standard gate also runs it.
@@ -36,8 +36,10 @@ padded dimensions and requested quality, not a worker instrumentation counter.
 
 Artifacts, including PNGs, binary captures, per-process logs, and provenance with
 input and output hashes, are kept under the reported ignored artifact directory.
-This proves controlled Java-to-Java repeatability, not Rust production-render
-parity or reproducibility under Java's default worker and RNG settings.
+Rust must match the Java padded bins and decoded RGB with legacy projection
+jitter enabled (amount 0.25, radius 0.5) and disabled (amount 0). The legacy
+preview API and CLI leave jitter off. This is controlled single-worker parity
+for these fixtures, not reproducibility under Java's default worker and RNG settings.
 
 ## Toolchain
 

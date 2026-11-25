@@ -8,6 +8,6 @@ mod filter;
 mod render;
 pub mod scene;
 pub use render::{
-    render, render_quality_500_with_raster, render_with_raster, Bin, RenderRequest, ResolvedStill,
-    Sample, Sampler, StillSettings, PREVIEW_SEED,
+    render, render_quality_500_with_raster, render_with_raster, Antialias, Bin, RenderRequest,
+    ResolvedStill, Sample, Sampler, StillSettings, PREVIEW_SEED,
 };

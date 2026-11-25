@@ -270,6 +270,7 @@ pub struct Sampler<'a> {
     cos_roll: f64,
     span: [f64; 2],
     scale: [f64; 2],
+    antialias: Antialias,
 }
 
 impl<'a> Sampler<'a> {
@@ -281,6 +282,7 @@ impl<'a> Sampler<'a> {
             0,
             PREVIEW_SEED,
             pixels_per_unit(scene, width, height),
+            Antialias::default(),
         )
     }
 
@@ -291,6 +293,7 @@ impl<'a> Sampler<'a> {
         border: usize,
         seed: i64,
         ppu: f64,
+        antialias: Antialias,
     ) -> Self {
         let mut rng = Marsaglia::seeded(seed);
         // Java initializes each ordinary variation in xform order before drawing the first point.
@@ -359,6 +362,7 @@ impl<'a> Sampler<'a> {
             cos_roll,
             span,
             scale,
+            antialias,
         }
     }
 
@@ -372,7 +376,12 @@ impl<'a> Sampler<'a> {
         let point = [self.state.x, self.state.y];
         let color = self.state.color;
         let palette_index = ((color * 254.0 + 0.5) as usize).min(255);
-        let pixel = self.project_pixel([point[0], point[1], self.state.z]);
+        let pixel = self
+            .project([point[0], point[1], self.state.z])
+            .and_then(|projected| {
+                let jitter = self.antialias.jitter(&mut self.rng);
+                self.raster_pixel(projected, jitter)
+            });
         Sample {
             transform,
             point,
@@ -384,7 +393,12 @@ impl<'a> Sampler<'a> {
     }
 
     /// Map a world-space point to the sample raster without modifying the orbit.
-    pub fn project_pixel(&self, [x, y, z]: [f64; 3]) -> Option<[usize; 2]> {
+    pub fn project_pixel(&self, point: [f64; 3]) -> Option<[usize; 2]> {
+        self.project(point)
+            .and_then(|p| self.raster_pixel(p, [0.0; 2]))
+    }
+
+    fn project(&self, [x, y, z]: [f64; 3]) -> Option<[f64; 2]> {
         let [x, y] = if let Some(matrix) = self.camera_matrix {
             let [cx, cy, cz] = matrix.map(|[a, b, c]| a * x + b * y + c * z);
             let depth = 1.0 - self.scene.perspective * cz;
@@ -399,13 +413,17 @@ impl<'a> Sampler<'a> {
             x * self.cos_roll + y * self.sin_roll + self.projection_offset[0],
             y * self.cos_roll - x * self.sin_roll + self.projection_offset[1],
         ];
-        if (0..2).all(|i| projected[i] >= 0.0 && projected[i] <= self.span[i]) {
-            let pixel: [usize; 2] =
-                std::array::from_fn(|i| (self.scale[i] * projected[i] + 0.5) as usize);
-            (pixel[0] < self.size[0] && pixel[1] < self.size[1]).then_some(pixel)
-        } else {
-            None
-        }
+        (0..2)
+            .all(|i| projected[i] >= 0.0 && projected[i] <= self.span[i])
+            .then_some(projected)
+    }
+
+    fn raster_pixel(&self, projected: [f64; 2], jitter: [f64; 2]) -> Option<[usize; 2]> {
+        let pixel: [i32; 2] =
+            std::array::from_fn(|i| (self.scale[i] * projected[i] + jitter[i] + 0.5) as i32);
+        (0..2)
+            .all(|i| pixel[i] >= 0 && (pixel[i] as usize) < self.size[i])
+            .then(|| pixel.map(|v| v as usize))
     }
 }
 
@@ -441,8 +459,32 @@ impl Bin {
     }
 }
 
+/// Legacy random projection jitter, separate from the reconstruction filter.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Antialias {
+    pub amount: f64,
+    pub radius: f64,
+}
+
+impl Antialias {
+    fn jitter(self, rng: &mut Marsaglia) -> [f64; 2] {
+        if self.amount > CAMERA_EPSILON
+            && self.radius > CAMERA_EPSILON
+            && rng.next() > 1.0 - self.amount
+        {
+            let dr = crate::fast_pow::exp(
+                self.radius * crate::fast_sqrt::sqrt(-crate::fast_pow::log(rng.next())),
+            ) - 1.0;
+            let da = rng.next() * 2.0 * std::f64::consts::PI;
+            [dr * crate::fast_sin::cos(da), dr * crate::fast_sin::sin(da)]
+        } else {
+            [0.0; 2]
+        }
+    }
+}
+
 /// Explicit inputs for a single-worker CPU still render.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct RenderRequest {
     pub width: usize,
@@ -451,6 +493,8 @@ pub struct RenderRequest {
     /// JWildfire Marsaglia seed; only the low 16 bits affect initialization.
     /// A zero low word intentionally gives Java's all-zero stream.
     pub seed: i64,
+    /// Off by default to preserve the preview contract.
+    pub antialias: Antialias,
 }
 
 impl RenderRequest {
@@ -460,6 +504,7 @@ impl RenderRequest {
             height,
             quality,
             seed,
+            antialias: Antialias::default(),
         }
     }
 
@@ -499,7 +544,9 @@ impl ResolvedStill<'_> {
         self.render_with_raster(|_| Ok(()))
     }
 
-    fn render_with_raster(
+    /// Capture the padded raster before shading for parity diagnostics.
+    #[doc(hidden)]
+    pub fn render_with_raster(
         &self,
         capture: impl FnOnce(&[Bin]) -> Result<(), String>,
     ) -> Result<Vec<u8>, String> {
@@ -510,6 +557,7 @@ impl ResolvedStill<'_> {
                     height,
                     quality,
                     seed,
+                    antialias,
                 },
             raster_width,
             raster_height,
@@ -518,8 +566,15 @@ impl ResolvedStill<'_> {
             pixels_per_unit,
             ..
         } = self.settings;
-        let mut sampler =
-            Sampler::with_border(self.scene, width, height, border, seed, pixels_per_unit);
+        let mut sampler = Sampler::with_border(
+            self.scene,
+            width,
+            height,
+            border,
+            seed,
+            pixels_per_unit,
+            antialias,
+        );
         let mut raster = vec![Bin::default(); raster_width * raster_height];
         for _ in 0..sample_budget {
             let sample = sampler.step();
@@ -591,6 +646,14 @@ fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<Resolved
     } = request;
     if scene.filter_radius != 0.0 && scene.filter_radius != 1.0 {
         return Err("only filter radii 0 and 1 are supported".into());
+    }
+    if !(0.0..=1.0).contains(&request.antialias.amount)
+        || !request.antialias.radius.is_finite()
+        || request.antialias.radius < 0.0
+    {
+        return Err(
+            "antialias amount must be in 0..=1 and radius must be finite and nonnegative".into(),
+        );
     }
     let filter = Kernel::mitchell_smooth(scene.filter_radius);
     let border = filter.border();
