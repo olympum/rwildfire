@@ -32,7 +32,7 @@ A pass validates only the cases supplied. The initial Java-to-Java checks establ
 
 ## Roadmap
 
-The [parity contract](docs/adr/0001-parity-evidence.md) describes how we’ll extend the port beyond the first CPU scenes.
+The [parity contract](docs/adr/0001-parity-evidence.md) describes how we’ll extend the port beyond the first CPU scenes. The [render boundaries ADR](docs/adr/0002-render-boundaries.md) separates still-render settings from the future editable flame document, timeline, and GPU implementation.
 
 ## Contributing
 
