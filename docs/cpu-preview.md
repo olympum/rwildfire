@@ -18,6 +18,12 @@ with `Math.random()`, outside the seeded sampler. The comparisons establish
 parity at those explicit powers, not repeatability of unmodified Java loads.
 The gate records the original and modified input hashes.
 
+The `chaos` attribute takes one nonnegative multiplier per ordinary transform,
+in XML order. The previous transform’s row multiplies the destination weights
+before selection. Omitting a row leaves all multipliers at one. An explicit
+row must have a finite positive effective total; partial and zero-total rows
+are unsupported.
+
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
 intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute

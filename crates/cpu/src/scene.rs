@@ -19,6 +19,7 @@ pub struct Scene {
 }
 pub struct Transform {
     pub weight: f64,
+    pub(crate) chaos: Option<Vec<f64>>,
     pub color: f64,
     pub symmetry: f64,
     pub affine: [f64; 6],
@@ -265,15 +266,18 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         if !child_elements(c)?.is_empty() {
             return Err("xform children are unsupported".into());
         }
-        if let Some(chaos) = c.attribute("chaos") {
+        let chaos = if let Some(chaos) = c.attribute("chaos") {
             let values = chaos
                 .split_whitespace()
                 .map(|v| finite(v, "chaos"))
                 .collect::<Result<Vec<_>, _>>()?;
-            if values.len() != xforms.len() || values.iter().any(|v| *v != 1.) {
-                return Err("nontrivial chaos is unsupported".into());
+            if values.len() != xforms.len() || values.iter().any(|v| *v < 0.0) {
+                return Err("chaos requires one nonnegative multiplier per xform".into());
             }
-        }
+            Some(values)
+        } else {
+            None
+        };
         let weight = finite(&required(c, "weight")?, "weight")?;
         let color = finite(&required(c, "color")?, "color")?;
         let symmetry = number(c, "symmetry", 0.)?;
@@ -368,6 +372,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         }
         transforms.push(Transform {
             weight,
+            chaos,
             color,
             symmetry,
             affine,
@@ -377,6 +382,20 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let total = transforms.iter().map(|t| t.weight).sum::<f64>();
     if total <= 0. || !total.is_finite() {
         return Err("invalid total xform weight".into());
+    }
+    for (index, transform) in transforms.iter().enumerate() {
+        if let Some(row) = &transform.chaos {
+            let outgoing = transforms
+                .iter()
+                .zip(row)
+                .map(|(target, multiplier)| target.weight * multiplier)
+                .sum::<f64>();
+            if outgoing <= 0.0 || !outgoing.is_finite() {
+                return Err(format!(
+                    "chaos row {index} requires a finite positive outgoing weight"
+                ));
+            }
+        }
     }
     Ok(Scene {
         width,

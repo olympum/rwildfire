@@ -73,3 +73,20 @@ fn resolution_rejects_oversized_jobs_before_rendering() {
         assert!(request.resolve(&scene).is_err(), "accepted {request:?}");
     }
 }
+
+#[test]
+fn invalid_chaos_rows_are_rejected_by_the_loader() {
+    let fixture = include_str!("../../../fixtures/chaos-transitions.flame");
+    for (row, expected) in [
+        ("0 1", "one nonnegative multiplier per xform"),
+        ("-1 1 0.4", "one nonnegative multiplier per xform"),
+        ("0 0 0", "finite positive outgoing weight"),
+        ("0 1e308 1e308", "finite positive outgoing weight"),
+    ] {
+        let xml = fixture.replacen("chaos=\"0 1 0.4\"", &format!("chaos=\"{row}\""), 1);
+        let Err(error) = parse(&xml) else {
+            panic!("accepted chaos row {row}");
+        };
+        assert!(error.contains(expected), "{row}: {error}");
+    }
+}
