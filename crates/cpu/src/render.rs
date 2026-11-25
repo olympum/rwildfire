@@ -6,7 +6,7 @@ use crate::{
 };
 
 const TABLE_SIZE: usize = 1024;
-const SEED: i64 = 741103597;
+pub const PREVIEW_SEED: i64 = 741103597;
 
 struct Marsaglia(i32, i32);
 impl Marsaglia {
@@ -274,11 +274,17 @@ pub struct Sampler<'a> {
 
 impl<'a> Sampler<'a> {
     pub fn new(scene: &'a Scene, width: usize, height: usize) -> Self {
-        Self::with_border(scene, width, height, 0)
+        Self::with_border(scene, width, height, 0, PREVIEW_SEED)
     }
 
-    fn with_border(scene: &'a Scene, width: usize, height: usize, border: usize) -> Self {
-        let mut rng = Marsaglia::seeded(SEED);
+    fn with_border(
+        scene: &'a Scene,
+        width: usize,
+        height: usize,
+        border: usize,
+        seed: i64,
+    ) -> Self {
+        let mut rng = Marsaglia::seeded(seed);
         // Java initializes each ordinary variation in xform order before drawing the first point.
         let mut blur3d: Vec<_> = scene
             .transforms
@@ -428,16 +434,113 @@ impl Bin {
     }
 }
 
+/// Explicit inputs for a single-worker CPU still render.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RenderRequest {
+    pub width: usize,
+    pub height: usize,
+    pub quality: usize,
+    /// JWildfire Marsaglia seed; only the low 16 bits affect initialization.
+    pub seed: i64,
+}
+
+impl RenderRequest {
+    pub fn new(width: usize, height: usize, quality: usize, seed: i64) -> Self {
+        Self {
+            width,
+            height,
+            quality,
+            seed,
+        }
+    }
+
+    /// Validate dimensions and budget without allocating a raster or drawing samples.
+    pub fn resolve(self, scene: &Scene) -> Result<ResolvedStill<'_>, String> {
+        resolve(scene, self, 200_000_000)
+    }
+}
+
+/// Inspectable CPU settings, not a serialized format or GPU layout.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct StillSettings {
+    pub request: RenderRequest,
+    pub raster_width: usize,
+    pub raster_height: usize,
+    pub border: usize,
+    pub sample_budget: usize,
+    pub pixels_per_unit: f64,
+    pub filter_radius: f64,
+}
+
+/// Resolved inputs borrow the scene immutably; each render starts a new job.
+pub struct ResolvedStill<'a> {
+    scene: &'a Scene,
+    settings: StillSettings,
+    filter: Kernel,
+}
+
+impl ResolvedStill<'_> {
+    pub fn settings(&self) -> StillSettings {
+        self.settings
+    }
+
+    /// Return row-major RGB8 without encoding or writing a file.
+    pub fn render(&self) -> Result<Vec<u8>, String> {
+        self.render_with_raster(|_| Ok(()))
+    }
+
+    fn render_with_raster(
+        &self,
+        capture: impl FnOnce(&[Bin]) -> Result<(), String>,
+    ) -> Result<Vec<u8>, String> {
+        let StillSettings {
+            request:
+                RenderRequest {
+                    width,
+                    height,
+                    quality,
+                    seed,
+                },
+            raster_width,
+            raster_height,
+            border,
+            sample_budget,
+            ..
+        } = self.settings;
+        let mut sampler = Sampler::with_border(self.scene, width, height, border, seed);
+        let mut raster = vec![Bin::default(); raster_width * raster_height];
+        for _ in 0..sample_budget {
+            let sample = sampler.step();
+            if let Some([x, y]) = sample.pixel {
+                raster[y * raster_width + x].add(self.scene.palette[sample.palette_index]);
+            }
+        }
+        capture(&raster)?;
+        Ok(shade(
+            self.scene,
+            width,
+            height,
+            quality,
+            &raster,
+            &self.filter,
+        ))
+    }
+}
+
 pub fn render(
     scene: &Scene,
     width: usize,
     height: usize,
     quality: usize,
 ) -> Result<Vec<u8>, String> {
-    render_with_raster(scene, width, height, quality, |_| Ok(()))
+    RenderRequest::new(width, height, quality, PREVIEW_SEED)
+        .resolve(scene)?
+        .render()
 }
 
-/// Render with the same raster made available before shading for parity capture.
+/// Make the raster available before shading for parity capture.
 #[doc(hidden)]
 pub fn render_with_raster(
     scene: &Scene,
@@ -446,7 +549,9 @@ pub fn render_with_raster(
     quality: usize,
     capture: impl FnOnce(&[Bin]) -> Result<(), String>,
 ) -> Result<Vec<u8>, String> {
-    render_bounded(scene, width, height, quality, 200_000_000, capture)
+    RenderRequest::new(width, height, quality, PREVIEW_SEED)
+        .resolve(scene)?
+        .render_with_raster(capture)
 }
 
 /// Capture the fixed TINA quality-500 layout without raising the preview cap.
@@ -458,34 +563,41 @@ pub fn render_quality_500_with_raster(
     if (scene.width, scene.height, scene.filter_radius) != (466, 331, 1.0) {
         return Err("quality-500 parity requires a 466×331 source and filter radius 1".into());
     }
-    render_bounded(scene, 932, 662, 500, 311_688_000, capture)
+    resolve(
+        scene,
+        RenderRequest::new(932, 662, 500, PREVIEW_SEED),
+        311_688_000,
+    )?
+    .render_with_raster(capture)
 }
 
-fn render_bounded(
-    scene: &Scene,
-    width: usize,
-    height: usize,
-    quality: usize,
-    cap: usize,
-    capture: impl FnOnce(&[Bin]) -> Result<(), String>,
-) -> Result<Vec<u8>, String> {
+fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<ResolvedStill<'_>, String> {
+    let RenderRequest {
+        width,
+        height,
+        quality,
+        ..
+    } = request;
     if scene.filter_radius != 0.0 && scene.filter_radius != 1.0 {
         return Err("only filter radii 0 and 1 are supported".into());
     }
     let filter = Kernel::mitchell_smooth(scene.filter_radius);
     let border = filter.border();
-    let samples = sample_budget(width, height, quality, border, cap)?;
-    let stride = width + 2 * border;
-    let mut sampler = Sampler::with_border(scene, width, height, border);
-    let mut raster = vec![Bin::default(); stride * (height + 2 * border)];
-    for _ in 0..samples {
-        let sample = sampler.step();
-        if let Some([x, y]) = sample.pixel {
-            raster[y * stride + x].add(scene.palette[sample.palette_index]);
-        }
-    }
-    capture(&raster)?;
-    Ok(shade(scene, width, height, quality, &raster, &filter))
+    let sample_budget = sample_budget(width, height, quality, border, cap)?;
+    let settings = StillSettings {
+        request,
+        border,
+        raster_width: width + 2 * border,
+        raster_height: height + 2 * border,
+        sample_budget,
+        pixels_per_unit: pixels_per_unit(scene, width, height),
+        filter_radius: scene.filter_radius,
+    };
+    Ok(ResolvedStill {
+        scene,
+        settings,
+        filter,
+    })
 }
 
 // Opaque-black path of JWildfire's LogScaleCalculator,

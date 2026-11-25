@@ -1,4 +1,4 @@
-use rwildfire_cpu::{render, scene::parse};
+use rwildfire_cpu::{scene::parse, RenderRequest, PREVIEW_SEED};
 use std::{
     env,
     fs::{self, OpenOptions},
@@ -40,7 +40,9 @@ fn run(
     let scene = parse(&fs::read_to_string(input)?)?;
     let width = scene.width.checked_mul(2).ok_or("image width overflow")?;
     let height = scene.height.checked_mul(2).ok_or("image height overflow")?;
-    let pixels = render(&scene, width, height, quality)?;
+    let pixels = RenderRequest::new(width, height, quality, PREVIEW_SEED)
+        .resolve(&scene)?
+        .render()?;
     let mut png = png::Encoder::new(
         BufWriter::new(
             OpenOptions::new()
