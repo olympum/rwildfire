@@ -2,8 +2,8 @@
 
     cargo run --release --locked -p rwildfire-cpu -- /path/to/JWildfire/resources/flames/TINA0010.flame /tmp/tina0010.png
 
-The preview reads original flame XML directly. It supports legacy single-layer
-scenes with an RGB palette, camera roll, weighted XY transforms, and the
+The preview reads legacy flame XML and a subset of JWildfire’s layered `jwf-flame`
+format. It supports RGB palettes, camera roll, weighted XY transforms, and the
 `linear3D`, `spherical3D`, `waves`, `bubble`, `spiral`, `pdj`, `disc`, `hemisphere`, `swirl`, `rectangles`, `curl3D`, `heart`, `horseshoe`, `fan2`, `diamond`, `popcorn`, `blur`, `blur3D`, and `julia3D` variations. Fan2 reads `fan2_x` and `fan2_y`, defaulting to `(0.5, 1.2)`. Curl3D reads `curl3D_cx`, `curl3D_cy`, and `curl3D_cz`, defaulting to `(0, 0.05, 0.05)`. Rectangles takes `rectangles_x` and `rectangles_y`, defaulting to `0.3` and `0.2`. The `pdj` preview reads `pdj_a` through `pdj_d`, defaulting to `(1, 2, 3, 4)`. The sampler carries Z between
 transforms. The camera supports pitch, yaw, roll, and perspective, including near-plane clipping before pixel mapping. Legacy pitch and yaw are radians in XML; `rotate` is in degrees. Camera bank, translation, depth of field, and solid rendering remain unsupported. The sine, cosine, and tangent ports use the pinned Java angle reduction. The parity gate compares those functions against Java across small and large arguments, including near tangent poles. Supported variations accumulate in the order JWildfire loads them from
 legacy XML. An explicit zero amount is still evaluated: a zero `blur` consumes
@@ -32,7 +32,15 @@ JWildfire skips the entire post stage when every coefficient is within
 elements run on a plotting copy after each ordinary sample, never during
 warmup or as orbit feedback. They inherit the ordinary point’s RGB color
 and use the same RNG stream. This preview does not support explicit final
-color modes, chaos on finals, or multiple layers.
+color modes or chaos on finals.
+
+A `jwf-flame` may contain one to 16 visible layers in XML order, each with its
+own palette and ordinary and final transforms. Layer weight scales RGB, while
+density below one gates attempts with probability density squared. Both default
+to one and must be in `0..=1`. The seeded worker shares its RNG across layers,
+completes whole layer rounds, and flushes per-layer batches into a single raster
+in Java production order. Hidden layers are not supported. The `Sampler` trace
+API traces the first layer in isolation; use a render request for the full scene.
 
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for

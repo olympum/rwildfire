@@ -14,6 +14,12 @@ pub struct Scene {
     pub gamma: f64,
     pub threshold: f64,
     pub filter_radius: f64,
+    pub layers: Vec<Layer>,
+}
+
+pub struct Layer {
+    pub(crate) weight: f64,
+    pub(crate) density: f64,
     pub transforms: Vec<Transform>,
     pub(crate) final_transforms: Vec<Transform>,
     pub palette: [[u8; 3]; 256],
@@ -140,9 +146,11 @@ fn child_elements<'a, 'i>(n: Element<'a, 'i>) -> Result<Vec<Element<'a, 'i>>, St
 pub fn parse(xml: &str) -> Result<Scene, String> {
     let doc = Document::parse(xml).map_err(|err| err.to_string())?;
     let n = doc.root_element();
-    if n.tag_name().name() != "flame" {
-        return Err("expected a single flame element".into());
-    }
+    let layered = match n.tag_name().name() {
+        "jwf-flame" => true,
+        "flame" => false,
+        _ => return Err("expected a single flame or jwf-flame element".into()),
+    };
     // Quality is a CLI setting; legacy estimator fields are not implemented.
     allowed(
         n,
@@ -209,6 +217,51 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     {
         return Err("invalid size, camera or tone settings".into());
     }
+    let layers = if layered {
+        let nodes = child_elements(n)?;
+        if !(1..=16).contains(&nodes.len()) {
+            return Err("expected 1..=16 layers".into());
+        }
+        nodes
+            .into_iter()
+            .map(|node| {
+                if node.tag_name().name() != "layer" {
+                    return Err("expected layer inside jwf-flame".into());
+                }
+                allowed(node, &["name", "visible", "weight", "density"])?;
+                if node.attribute("visible").is_some_and(|v| v != "1") {
+                    return Err("only visible layers are supported".into());
+                }
+                let weight = number(node, "weight", 1.0)?;
+                let density = number(node, "density", 1.0)?;
+                if !(0.0..=1.0).contains(&weight) || !(0.0..=1.0).contains(&density) {
+                    return Err("layer weight and density must be in 0..=1".into());
+                }
+                read_layer(node, weight, density)
+            })
+            .collect::<Result<Vec<_>, String>>()?
+    } else {
+        vec![read_layer(n, 1.0, 1.0)?]
+    };
+    Ok(Scene {
+        width,
+        height,
+        ppu,
+        zoom,
+        roll_degrees,
+        pitch_degrees,
+        yaw_degrees,
+        perspective,
+        center,
+        brightness,
+        gamma,
+        threshold,
+        filter_radius,
+        layers,
+    })
+}
+
+fn read_layer(n: Element<'_, '_>, weight: f64, density: f64) -> Result<Layer, String> {
     let mut transforms = Vec::new();
     let mut final_transforms = Vec::new();
     let mut finals = Vec::new();
@@ -439,20 +492,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             }
         }
     }
-    Ok(Scene {
-        width,
-        height,
-        ppu,
-        zoom,
-        roll_degrees,
-        pitch_degrees,
-        yaw_degrees,
-        perspective,
-        center,
-        brightness,
-        gamma,
-        threshold,
-        filter_radius,
+    Ok(Layer {
+        weight,
+        density,
         transforms,
         final_transforms,
         palette: palette.ok_or("missing palette")?,
