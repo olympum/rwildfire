@@ -47,6 +47,7 @@ fn table(transforms: &[Transform], chaos: Option<&[f64]>) -> [usize; TABLE_SIZE]
     })
 }
 
+#[derive(Clone, Copy)]
 struct Point {
     x: f64,
     y: f64,
@@ -270,6 +271,7 @@ pub struct Sampler<'a> {
     state: Point,
     rng: Marsaglia,
     blur3d: Vec<Option<Blur3DState>>,
+    final_blur3d: Vec<Option<Blur3DState>>,
     tables: Vec<[usize; TABLE_SIZE]>,
     previous: usize,
     size: [usize; 2],
@@ -305,20 +307,23 @@ impl<'a> Sampler<'a> {
         antialias: Antialias,
     ) -> Self {
         let mut rng = Marsaglia::seeded(seed);
-        // Java initializes each ordinary variation in xform order before drawing the first point.
-        let mut blur3d: Vec<_> = scene
-            .transforms
-            .iter()
-            .map(|t| {
-                t.variations
-                    .iter()
-                    .any(|v| matches!(v.kind, VariationKind::Blur3D))
-                    .then(|| Blur3DState {
-                        draws: std::array::from_fn(|_| rng.next()),
-                        index: 0,
-                    })
-            })
-            .collect();
+        // Java initializes ordinary, then final variations before drawing the first point.
+        let mut init_blur3d = |transforms: &[Transform]| {
+            transforms
+                .iter()
+                .map(|t| {
+                    t.variations
+                        .iter()
+                        .any(|v| matches!(v.kind, VariationKind::Blur3D))
+                        .then(|| Blur3DState {
+                            draws: std::array::from_fn(|_| rng.next()),
+                            index: 0,
+                        })
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut blur3d = init_blur3d(&scene.transforms);
+        let final_blur3d = init_blur3d(&scene.final_transforms);
         let mut state = Point {
             x: 2.0 * rng.next() - 1.0,
             y: 2.0 * rng.next() - 1.0,
@@ -369,6 +374,7 @@ impl<'a> Sampler<'a> {
             state,
             rng,
             blur3d,
+            final_blur3d,
             tables,
             previous,
             size,
@@ -393,8 +399,17 @@ impl<'a> Sampler<'a> {
         let point = [self.state.x, self.state.y];
         let color = self.state.color;
         let palette_index = ((color * 254.0 + 0.5) as usize).min(255);
+        let mut plot = self.state;
+        for (final_xform, blur) in self
+            .scene
+            .final_transforms
+            .iter()
+            .zip(&mut self.final_blur3d)
+        {
+            plot.apply(final_xform, &mut self.rng, blur);
+        }
         let pixel = self
-            .project([point[0], point[1], self.state.z])
+            .project([plot.x, plot.y, plot.z])
             .and_then(|projected| {
                 let jitter = self.antialias.jitter(&mut self.rng);
                 self.raster_pixel(projected, jitter)
