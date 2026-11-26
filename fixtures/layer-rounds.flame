@@ -22,8 +22,9 @@ D4663BD5663BD5673BD6673BD6673BD7673BD7673BD8683BD8683CD9683CD9683CDA693CDA693CDB
     </palette>
   </layer>
   <layer name="Layer 2" visible="1" weight="0.813" density="0.83">
-    <xform weight="1" color="0.13" coefs="0.58 0.14 -0.14 0.58 -0.26 -0.12" linear3D="1" blur3D="0.08" />
+    <xform weight="1" color="0.13" coefs="0.58 0.14 -0.14 0.58 -0.22 -0.09" linear3D="1" blur3D="0.08" />
     <xform weight="1.3" color="0.83" coefs="0.59 -0.18 0.18 0.59 0.23 0.17" linear3D="1" />
+    <finalxform coefs="0.94 0.08 -0.12 0.96 0.03 -0.02" linear3D="1" blur3D="0.045" />
     <palette count="256" format="RGB">
 2962482963482963492963492A64492A644A2A654A2A654A2A664B2B664B2B674B2B674C2B684C2B684C2C694D2C694D
 2C6A4E2C6A4E2C6B4E2D6B4F2D6B4F2D6C4F2D6C502D6D502E6D502E6E512E6E512E6F512E6F522F70522F70522F7153
@@ -44,7 +45,7 @@ D4663BD5663BD5673BD6673BD6673BD7673BD7673BD8683BD8683CD9683CD9683CDA693CDA693CDB
     </palette>
   </layer>
   <layer name="Layer 3" visible="1" weight="0.661" density="0.91">
-    <xform weight="1" color="0.13" coefs="0.58 0.14 -0.14 0.58 -0.26 -0.12" linear3D="1" blur3D="0.08" />
+    <xform weight="1" color="0.13" coefs="0.58 0.14 -0.14 0.58 -0.29 -0.15" linear3D="1" blur3D="0.08" />
     <xform weight="1.3" color="0.83" coefs="0.59 -0.18 0.18 0.59 0.23 0.17" linear3D="1" />
     <palette count="256" format="RGB">
 38426F3842703843703943713943713944723944723A44733A45733A45743A45743B46753B46763B46763C47773C4777
