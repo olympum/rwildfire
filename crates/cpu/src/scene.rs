@@ -23,6 +23,7 @@ pub struct Transform {
     pub color: f64,
     pub symmetry: f64,
     pub affine: [f64; 6],
+    pub(crate) post: Option<[f64; 6]>,
     pub variations: Vec<Variation>,
 }
 pub struct Variation {
@@ -229,6 +230,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
                 "color",
                 "symmetry",
                 "coefs",
+                "post",
                 "chaos",
                 "linear3D",
                 "spherical3D",
@@ -282,6 +284,21 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         let color = finite(&required(c, "color")?, "color")?;
         let symmetry = number(c, "symmetry", 0.)?;
         let affine = vector::<f64, 6>(c, "coefs")?;
+        let post = if c.attribute("post").is_some() {
+            let coefficients = vector::<f64, 6>(c, "post")?;
+            if coefficients.iter().any(|v| !v.is_finite()) {
+                return Err("post coefficients must be finite".into());
+            }
+            // XForm.updateHasXYPostCoeffs uses a strict epsilon test.
+            let identity = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+            coefficients
+                .iter()
+                .zip(identity)
+                .any(|(v, id)| (v - id).abs() > 1.0e-8)
+                .then_some(coefficients)
+        } else {
+            None
+        };
         if c.attribute("pdj").is_none()
             && ["pdj_a", "pdj_b", "pdj_c", "pdj_d"]
                 .iter()
@@ -376,6 +393,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             color,
             symmetry,
             affine,
+            post,
             variations,
         });
     }

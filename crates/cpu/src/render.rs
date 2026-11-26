@@ -231,8 +231,11 @@ impl Point {
                 }
             }
         }
-        self.x = x;
-        self.y = y;
+        [self.x, self.y] = if let Some([a, b, d, e, tx, ty]) = t.post {
+            [a * x + d * y + tx, b * x + e * y + ty]
+        } else {
+            [x, y]
+        };
         self.z = z;
         let c1 = (1.0 + t.symmetry) * 0.5;
         let c2 = t.color * (1.0 - t.symmetry) * 0.5;
