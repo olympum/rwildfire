@@ -17,7 +17,7 @@ AA_AMOUNT, AA_RADIUS = 0.25, 0.5
 SCENES = ("TINA0010", "TINA0012")
 
 
-def read_capture(prefix, quality):
+def read_capture(prefix, quality, layers=1):
     raster = prefix.with_suffix(".raster").read_bytes()
     rgb = prefix.with_suffix(".rgb").read_bytes()
     # Filter radius 1, default Mitchell Smooth, oversampling 1.
@@ -32,6 +32,7 @@ def read_capture(prefix, quality):
             raise oracle.OracleError(f"{prefix.name}: invalid raster bin")
         hits += count
     budget = w * h * quality
+    budget += (-budget) % layers
     if not 0 < hits <= budget:
         raise oracle.OracleError(f"{prefix.name}: invalid hit count {hits} for budget {budget}")
     return raster, rgb, hits, budget
@@ -72,10 +73,11 @@ def check(source):
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    for name in ("chaos-transitions", "post-affine", "final-chain"):
+    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
-        record = {"input_sha256": oracle.sha256_file(scene), "runs": {}}
+        layers = 3 if name == "layer-rounds" else 1
+        record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers, "runs": {}}
 
         def run(label, quality, amount=AA_AMOUNT):
             prefix = work / f"{name}-{label}"
@@ -85,9 +87,9 @@ def check(source):
                 subprocess.run([
                     jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
                     "-cp", runtime_cp, "WholeRenderProbe", str(scene), str(prefix),
-                    str(WIDTH), str(HEIGHT), str(quality), str(SEED), str(amount), str(AA_RADIUS),
+                    str(WIDTH), str(HEIGHT), str(quality), str(SEED), str(amount), str(AA_RADIUS), str(layers),
                 ], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
-            raster, rgb, hits, budget = read_capture(prefix, quality)
+            raster, rgb, hits, budget = read_capture(prefix, quality, layers)
             record["runs"][label] = {
                 "quality": quality, "hits": hits, "sample_budget": budget,
                 "antialias_amount": amount, "antialias_radius": AA_RADIUS,
@@ -117,7 +119,7 @@ def check(source):
                 "--example", "capture_whole_render", "--", str(scene), str(prefix),
                 str(WIDTH), str(HEIGHT), str(QUALITY), str(SEED), str(amount), str(AA_RADIUS),
             ], check=True, timeout=120)
-            candidate = read_capture(prefix, QUALITY)
+            candidate = read_capture(prefix, QUALITY, layers)
             compare(reference, candidate, f"{name} {mode}")
             record["runs"][f"rust-{mode}"] = {
                 "quality": QUALITY, "hits": candidate[2], "sample_budget": candidate[3],

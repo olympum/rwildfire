@@ -43,7 +43,9 @@ for these fixtures, not reproducibility under Java's default worker and RNG sett
 The same comparisons also cover the repository-owned `chaos-transitions` fixture,
 with nonuniform destination weights and an omitted (all-ones) row. The
 `post-affine` fixture exercises an asymmetric XY matrix; `final-chain`
-exercises ordered stochastic and nonlinear final transforms.
+exercises ordered stochastic and nonlinear final transforms. `layer-rounds`
+uses overlapping weighted layers with different palettes and densities to check
+shared RNG, Java’s full-round budget and buffered raster addition order.
 
 ## Toolchain
 

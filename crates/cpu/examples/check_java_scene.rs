@@ -49,7 +49,7 @@ fn verify(xml: &str, reference: &str) {
         "1" => true,
         _ => panic!("invalid Java camera mode"),
     };
-    for (i, t) in sc.transforms.iter().enumerate() {
+    for (i, t) in sc.layers[0].transforms.iter().enumerate() {
         let [a, b, c, d, e, f] = t.affine;
         exact(
             &[t.weight, t.color, t.symmetry, a, b, c, d, e, f],
@@ -75,7 +75,7 @@ fn verify(xml: &str, reference: &str) {
         }
         assert_eq!(row("end-xform").len(), 1);
     }
-    for (i, rgb) in sc.palette.iter().enumerate() {
+    for (i, rgb) in sc.layers[0].palette.iter().enumerate() {
         exact(
             &rgb.map(f64::from),
             &row("palette")[1..],
@@ -123,7 +123,7 @@ fn verify(xml: &str, reference: &str) {
         if let Some([x, y]) = step.pixel {
             bins.entry(y * w + x)
                 .or_default()
-                .add(sc.palette[step.palette_index]);
+                .add(sc.layers[0].palette[step.palette_index]);
         }
     }
     assert!(bins.len() > 100, "too few occupied raster bins");

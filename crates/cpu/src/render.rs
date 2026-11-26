@@ -2,10 +2,11 @@
 // This Rust port is distributed under GPL-3.0-or-later.
 use crate::{
     filter::Kernel,
-    scene::{Scene, Transform, VariationKind},
+    scene::{Layer, Scene, Transform, VariationKind},
 };
 
 const TABLE_SIZE: usize = 1024;
+const PLOT_BUFFER_SIZE: usize = 8192;
 pub const PREVIEW_SEED: i64 = 741103597;
 
 struct Marsaglia(i32, i32);
@@ -267,47 +268,54 @@ fn camera_matrix(scene: &Scene) -> Option<[[f64; 3]; 3]> {
 }
 
 pub struct Sampler<'a> {
-    scene: &'a Scene,
-    state: Point,
+    orbit: Orbit<'a>,
     rng: Marsaglia,
+    view: View,
+}
+
+impl<'a> Sampler<'a> {
+    /// Trace the first layer by itself. Use a render request for multilayer scheduling.
+    pub fn new(scene: &'a Scene, width: usize, height: usize) -> Self {
+        let mut rng = Marsaglia::seeded(PREVIEW_SEED);
+        let mut orbit = Orbit::new(&scene.layers[0], &mut rng);
+        orbit.warm_up(&mut rng);
+        Self {
+            orbit,
+            rng,
+            view: View::new(
+                scene,
+                width,
+                height,
+                0,
+                pixels_per_unit(scene, width, height),
+                Antialias::default(),
+            ),
+        }
+    }
+
+    pub fn step(&mut self) -> Sample {
+        self.orbit.step(&self.view, &mut self.rng)
+    }
+
+    /// Map a world-space point to the sample raster without modifying the orbit.
+    pub fn project_pixel(&self, point: [f64; 3]) -> Option<[usize; 2]> {
+        self.view
+            .project(point)
+            .and_then(|p| self.view.raster_pixel(p, [0.0; 2]))
+    }
+}
+
+struct Orbit<'a> {
+    layer: &'a Layer,
+    state: Point,
     blur3d: Vec<Option<Blur3DState>>,
     final_blur3d: Vec<Option<Blur3DState>>,
     tables: Vec<[usize; TABLE_SIZE]>,
     previous: usize,
-    size: [usize; 2],
-    projection_offset: [f64; 2],
-    camera_matrix: Option<[[f64; 3]; 3]>,
-    sin_roll: f64,
-    cos_roll: f64,
-    span: [f64; 2],
-    scale: [f64; 2],
-    antialias: Antialias,
 }
 
-impl<'a> Sampler<'a> {
-    pub fn new(scene: &'a Scene, width: usize, height: usize) -> Self {
-        Self::with_border(
-            scene,
-            width,
-            height,
-            0,
-            PREVIEW_SEED,
-            pixels_per_unit(scene, width, height),
-            Antialias::default(),
-        )
-    }
-
-    fn with_border(
-        scene: &'a Scene,
-        width: usize,
-        height: usize,
-        border: usize,
-        seed: i64,
-        ppu: f64,
-        antialias: Antialias,
-    ) -> Self {
-        let mut rng = Marsaglia::seeded(seed);
-        // Java initializes ordinary, then final variations before drawing the first point.
+impl<'a> Orbit<'a> {
+    fn new(layer: &'a Layer, rng: &mut Marsaglia) -> Self {
         let mut init_blur3d = |transforms: &[Transform]| {
             transforms
                 .iter()
@@ -322,8 +330,29 @@ impl<'a> Sampler<'a> {
                 })
                 .collect::<Vec<_>>()
         };
-        let mut blur3d = init_blur3d(&scene.transforms);
-        let final_blur3d = init_blur3d(&scene.final_transforms);
+        let blur3d = init_blur3d(&layer.transforms);
+        let final_blur3d = init_blur3d(&layer.final_transforms);
+        let tables = layer
+            .transforms
+            .iter()
+            .map(|from| table(&layer.transforms, from.chaos.as_deref()))
+            .collect();
+        Self {
+            layer,
+            state: Point {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                color: 0.0,
+            },
+            blur3d,
+            final_blur3d,
+            tables,
+            previous: 0,
+        }
+    }
+
+    fn warm_up(&mut self, rng: &mut Marsaglia) {
         let mut state = Point {
             x: 2.0 * rng.next() - 1.0,
             y: 2.0 * rng.next() - 1.0,
@@ -331,18 +360,75 @@ impl<'a> Sampler<'a> {
             color: rng.next(),
         };
         rng.next(); // Initial material draw, even for the ordinary color raster.
-        let tables: Vec<_> = scene
-            .transforms
-            .iter()
-            .map(|from| table(&scene.transforms, from.chaos.as_deref()))
-            .collect();
         let mut previous = 0;
-        state.apply(&scene.transforms[0], &mut rng, &mut blur3d[0]);
+        state.apply(&self.layer.transforms[0], rng, &mut self.blur3d[0]);
         for _ in 0..=42 {
-            let index = select(&mut rng, &tables[previous]);
+            let index = select(rng, &self.tables[previous]);
             previous = index;
-            state.apply(&scene.transforms[index], &mut rng, &mut blur3d[index]);
+            state.apply(&self.layer.transforms[index], rng, &mut self.blur3d[index]);
         }
+        self.state = state;
+        self.previous = previous;
+    }
+
+    fn step(&mut self, view: &View, rng: &mut Marsaglia) -> Sample {
+        let transform = select(rng, &self.tables[self.previous]);
+        self.previous = transform;
+        self.state.apply(
+            &self.layer.transforms[transform],
+            rng,
+            &mut self.blur3d[transform],
+        );
+        let point = [self.state.x, self.state.y];
+        let color = self.state.color;
+        let palette_index = ((color * 254.0 + 0.5) as usize).min(255);
+        let mut plot = self.state;
+        for (final_xform, blur) in self
+            .layer
+            .final_transforms
+            .iter()
+            .zip(&mut self.final_blur3d)
+        {
+            plot.apply(final_xform, rng, blur);
+        }
+        let pixel = view
+            .project([plot.x, plot.y, plot.z])
+            .and_then(|projected| {
+                let jitter = view.antialias.jitter(rng);
+                view.raster_pixel(projected, jitter)
+            });
+        Sample {
+            transform,
+            point,
+            z: self.state.z,
+            color,
+            palette_index,
+            pixel,
+        }
+    }
+}
+
+struct View {
+    perspective: f64,
+    size: [usize; 2],
+    projection_offset: [f64; 2],
+    camera_matrix: Option<[[f64; 3]; 3]>,
+    sin_roll: f64,
+    cos_roll: f64,
+    span: [f64; 2],
+    scale: [f64; 2],
+    antialias: Antialias,
+}
+
+impl View {
+    fn new(
+        scene: &Scene,
+        width: usize,
+        height: usize,
+        border: usize,
+        ppu: f64,
+        antialias: Antialias,
+    ) -> Self {
         let image = [width, height];
         let size = image.map(|n| n + 2 * border);
         let border_units = border as f64 / ppu;
@@ -370,13 +456,7 @@ impl<'a> Sampler<'a> {
             )
         };
         Self {
-            scene,
-            state,
-            rng,
-            blur3d,
-            final_blur3d,
-            tables,
-            previous,
+            perspective: scene.perspective,
             size,
             projection_offset,
             camera_matrix,
@@ -388,52 +468,10 @@ impl<'a> Sampler<'a> {
         }
     }
 
-    pub fn step(&mut self) -> Sample {
-        let transform = select(&mut self.rng, &self.tables[self.previous]);
-        self.previous = transform;
-        self.state.apply(
-            &self.scene.transforms[transform],
-            &mut self.rng,
-            &mut self.blur3d[transform],
-        );
-        let point = [self.state.x, self.state.y];
-        let color = self.state.color;
-        let palette_index = ((color * 254.0 + 0.5) as usize).min(255);
-        let mut plot = self.state;
-        for (final_xform, blur) in self
-            .scene
-            .final_transforms
-            .iter()
-            .zip(&mut self.final_blur3d)
-        {
-            plot.apply(final_xform, &mut self.rng, blur);
-        }
-        let pixel = self
-            .project([plot.x, plot.y, plot.z])
-            .and_then(|projected| {
-                let jitter = self.antialias.jitter(&mut self.rng);
-                self.raster_pixel(projected, jitter)
-            });
-        Sample {
-            transform,
-            point,
-            z: self.state.z,
-            color,
-            palette_index,
-            pixel,
-        }
-    }
-
-    /// Map a world-space point to the sample raster without modifying the orbit.
-    pub fn project_pixel(&self, point: [f64; 3]) -> Option<[usize; 2]> {
-        self.project(point)
-            .and_then(|p| self.raster_pixel(p, [0.0; 2]))
-    }
-
     fn project(&self, [x, y, z]: [f64; 3]) -> Option<[f64; 2]> {
         let [x, y] = if let Some(matrix) = self.camera_matrix {
             let [cx, cy, cz] = matrix.map(|[a, b, c]| a * x + b * y + c * z);
-            let depth = 1.0 - self.scene.perspective * cz;
+            let depth = 1.0 - self.perspective * cz;
             if depth < CAMERA_EPSILON {
                 return None;
             }
@@ -484,10 +522,20 @@ pub struct Bin {
 }
 impl Bin {
     pub fn add(&mut self, color: [u8; 3]) {
+        self.add_weighted(color, 1.0);
+    }
+
+    fn add_weighted(&mut self, color: [u8; 3], weight: f64) {
         self.count += 1;
         for (sum, channel) in self.rgb.iter_mut().zip(color) {
-            *sum += f32::from(channel) * (200.0 / 256.0);
+            *sum += (f64::from(channel) * (200.0 / 256.0) * weight) as f32;
         }
+    }
+}
+
+fn flush_layer(raster: &mut [Bin], buffer: &mut Vec<(usize, [u8; 3])>, weight: f64) {
+    for (index, color) in buffer.drain(..) {
+        raster[index].add_weighted(color, weight);
     }
 }
 
@@ -598,21 +646,50 @@ impl ResolvedStill<'_> {
             pixels_per_unit,
             ..
         } = self.settings;
-        let mut sampler = Sampler::with_border(
+        let view = View::new(
             self.scene,
             width,
             height,
             border,
-            seed,
             pixels_per_unit,
             antialias,
         );
+        let mut rng = Marsaglia::seeded(seed);
+        // Java refreshes every layer's variation state before the worker warms any orbit.
+        let mut orbits: Vec<_> = self
+            .scene
+            .layers
+            .iter()
+            .map(|layer| Orbit::new(layer, &mut rng))
+            .collect();
+        for orbit in &mut orbits {
+            orbit.warm_up(&mut rng);
+        }
         let mut raster = vec![Bin::default(); raster_width * raster_height];
-        for _ in 0..sample_budget {
-            let sample = sampler.step();
-            if let Some([x, y]) = sample.pixel {
-                raster[y * raster_width + x].add(self.scene.palette[sample.palette_index]);
+        let mut buffers = vec![Vec::new(); orbits.len()];
+        for _ in (0..sample_budget).step_by(orbits.len()) {
+            for (orbit, buffer) in orbits.iter_mut().zip(&mut buffers) {
+                let layer = orbit.layer;
+                if layer.density < 1.0 && rng.next() > layer.density * layer.density {
+                    continue;
+                }
+                let sample = orbit.step(&view, &mut rng);
+                if let Some([x, y]) = sample.pixel {
+                    let index = y * raster_width + x;
+                    let color = layer.palette[sample.palette_index];
+                    if self.scene.layers.len() == 1 {
+                        raster[index].add_weighted(color, layer.weight);
+                    } else {
+                        buffer.push((index, color));
+                        if buffer.len() == PLOT_BUFFER_SIZE {
+                            flush_layer(&mut raster, buffer, layer.weight);
+                        }
+                    }
+                }
             }
+        }
+        for (orbit, buffer) in orbits.iter().zip(&mut buffers) {
+            flush_layer(&mut raster, buffer, orbit.layer.weight);
         }
         capture(&raster)?;
         Ok(shade(
@@ -689,7 +766,16 @@ fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<Resolved
     }
     let filter = Kernel::mitchell_smooth(scene.filter_radius);
     let border = filter.border();
-    let sample_budget = sample_budget(width, height, quality, border, cap)?;
+    let layers = scene.layers.len();
+    if layers == 0 || scene.layers.iter().any(|layer| layer.transforms.is_empty()) {
+        return Err("expected a nonempty set of layers with transforms".into());
+    }
+    let requested = sample_budget(width, height, quality, border, cap)?;
+    // The Java worker completes a full layer round even at the budget boundary.
+    let sample_budget = requested.next_multiple_of(layers);
+    if sample_budget > cap {
+        return Err(format!("sample budget exceeds {cap} iterations"));
+    }
     let settings = StillSettings {
         request,
         border,

@@ -90,3 +90,12 @@ fn invalid_chaos_rows_are_rejected_by_the_loader() {
         assert!(error.contains(expected), "{row}: {error}");
     }
 }
+
+#[test]
+fn layered_resolution_reports_full_rounds() {
+    let scene = parse(include_str!("../../../fixtures/layer-rounds.flame")).unwrap();
+    let still = RenderRequest::new(160, 120, 20, PREVIEW_SEED)
+        .resolve(&scene)
+        .unwrap();
+    assert_eq!(still.settings().sample_budget, 406_722);
+}
