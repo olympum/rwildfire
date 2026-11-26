@@ -72,7 +72,8 @@ def check(source):
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    scenes["chaos-transitions"] = oracle.ROOT / "fixtures/chaos-transitions.flame"
+    for name in ("chaos-transitions", "post-affine"):
+        scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
         record = {"input_sha256": oracle.sha256_file(scene), "runs": {}}
 

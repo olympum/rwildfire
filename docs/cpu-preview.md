@@ -24,6 +24,12 @@ before selection. Omitting a row leaves all multipliers at one. An explicit
 row must have a finite positive effective total; partial and zero-total rows
 are unsupported.
 
+Ordinary transforms may specify six finite XY `post` coefficients in the
+same order as `coefs`. They act on the accumulated variation output before
+projection and before the point feeds the next iteration; Z is unchanged.
+JWildfire skips the entire post stage when every coefficient is within
+`1e-8` of identity. Other affine planes and final transforms are unsupported.
+
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
 intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute
