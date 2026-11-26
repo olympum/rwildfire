@@ -15,6 +15,7 @@ pub struct Scene {
     pub threshold: f64,
     pub filter_radius: f64,
     pub transforms: Vec<Transform>,
+    pub(crate) final_transforms: Vec<Transform>,
     pub palette: [[u8; 3]; 256],
 }
 pub struct Transform {
@@ -209,11 +210,14 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         return Err("invalid size, camera or tone settings".into());
     }
     let mut transforms = Vec::new();
+    let mut final_transforms = Vec::new();
+    let mut finals = Vec::new();
     let mut palette = None;
     let mut xforms = Vec::new();
     for c in child_elements(n)? {
         match c.tag_name().name() {
             "xform" => xforms.push(c),
+            "finalxform" => finals.push(c),
             "palette" if palette.is_none() => palette = Some(read_palette(c)?),
             name => return Err(format!("unsupported or duplicate flame child: {name}")),
         }
@@ -221,8 +225,14 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     if !(1..=64).contains(&xforms.len()) {
         return Err("expected 1..=64 xforms".into());
     }
-    for c in &xforms {
-        let c = *c;
+    if finals.len() > 64 {
+        return Err("expected at most 64 finalxforms".into());
+    }
+    for (c, is_final) in xforms
+        .iter()
+        .map(|&c| (c, false))
+        .chain(finals.into_iter().map(|c| (c, true)))
+    {
         allowed(
             c,
             &[
@@ -269,6 +279,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             return Err("xform children are unsupported".into());
         }
         let chaos = if let Some(chaos) = c.attribute("chaos") {
+            if is_final {
+                return Err("chaos is unsupported on finalxform".into());
+            }
             let values = chaos
                 .split_whitespace()
                 .map(|v| finite(v, "chaos"))
@@ -280,8 +293,14 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         } else {
             None
         };
-        let weight = finite(&required(c, "weight")?, "weight")?;
-        let color = finite(&required(c, "color")?, "color")?;
+        let (weight, color) = if is_final {
+            (number(c, "weight", 0.0)?, number(c, "color", 0.0)?)
+        } else {
+            (
+                finite(&required(c, "weight")?, "weight")?,
+                finite(&required(c, "color")?, "color")?,
+            )
+        };
         let symmetry = number(c, "symmetry", 0.)?;
         let affine = vector::<f64, 6>(c, "coefs")?;
         let post = if c.attribute("post").is_some() {
@@ -387,7 +406,12 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         {
             return Err("invalid xform weight, color, coefficients or variation amounts".into());
         }
-        transforms.push(Transform {
+        let target = if is_final {
+            &mut final_transforms
+        } else {
+            &mut transforms
+        };
+        target.push(Transform {
             weight,
             chaos,
             color,
@@ -430,6 +454,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         threshold,
         filter_radius,
         transforms,
+        final_transforms,
         palette: palette.ok_or("missing palette")?,
     })
 }

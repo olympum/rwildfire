@@ -28,7 +28,11 @@ Ordinary transforms may specify six finite XY `post` coefficients in the
 same order as `coefs`. They act on the accumulated variation output before
 projection and before the point feeds the next iteration; Z is unchanged.
 JWildfire skips the entire post stage when every coefficient is within
-`1e-8` of identity. Other affine planes and final transforms are unsupported.
+`1e-8` of identity. Other affine planes are unsupported. Ordered `finalxform`
+elements run on a plotting copy after each ordinary sample, never during
+warmup or as orbit feedback. They inherit the ordinary point’s RGB color
+and use the same RNG stream. This preview does not support explicit final
+color modes, chaos on finals, or multiple layers.
 
 The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
