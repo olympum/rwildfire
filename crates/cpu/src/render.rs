@@ -284,8 +284,8 @@ impl<'a> Sampler<'a> {
             rng,
             view: View::new(
                 scene,
-                width,
-                height,
+                [width, height],
+                [width * scene.oversample, height * scene.oversample],
                 0,
                 pixels_per_unit(scene, width, height),
                 Antialias::default(),
@@ -423,14 +423,12 @@ struct View {
 impl View {
     fn new(
         scene: &Scene,
-        width: usize,
-        height: usize,
+        image: [usize; 2],
+        size: [usize; 2],
         border: usize,
         ppu: f64,
         antialias: Antialias,
     ) -> Self {
-        let image = [width, height];
-        let size = image.map(|n| n + 2 * border);
         let border_units = border as f64 / ppu;
         let corner: [f64; 2] =
             std::array::from_fn(|i| scene.center[i] - image[i] as f64 / ppu / 2.0);
@@ -602,6 +600,7 @@ pub struct StillSettings {
     pub raster_width: usize,
     pub raster_height: usize,
     pub border: usize,
+    pub oversample: usize,
     pub sample_budget: usize,
     pub pixels_per_unit: f64,
     pub filter_radius: f64,
@@ -635,9 +634,9 @@ impl ResolvedStill<'_> {
                 RenderRequest {
                     width,
                     height,
-                    quality,
                     seed,
                     antialias,
+                    ..
                 },
             raster_width,
             raster_height,
@@ -648,8 +647,8 @@ impl ResolvedStill<'_> {
         } = self.settings;
         let view = View::new(
             self.scene,
-            width,
-            height,
+            [width, height],
+            [raster_width, raster_height],
             border,
             pixels_per_unit,
             antialias,
@@ -692,15 +691,7 @@ impl ResolvedStill<'_> {
             flush_layer(&mut raster, buffer, orbit.layer.weight);
         }
         capture(&raster)?;
-        Ok(shade(
-            self.scene,
-            width,
-            height,
-            quality,
-            pixels_per_unit,
-            &raster,
-            &self.filter,
-        ))
+        Ok(shade(self.scene, self.settings, &raster, &self.filter))
     }
 }
 
@@ -735,8 +726,16 @@ pub fn render_quality_500_with_raster(
     scene: &Scene,
     capture: impl FnOnce(&[Bin]) -> Result<(), String>,
 ) -> Result<Vec<u8>, String> {
-    if (scene.width, scene.height, scene.filter_radius) != (466, 331, 1.0) {
-        return Err("quality-500 parity requires a 466×331 source and filter radius 1".into());
+    if (
+        scene.width,
+        scene.height,
+        scene.filter_radius,
+        scene.oversample,
+    ) != (466, 331, 1.0, 1)
+    {
+        return Err(
+            "quality-500 parity requires a 466×331 source, filter radius 1 and oversample 1".into(),
+        );
     }
     resolve(
         scene,
@@ -764,13 +763,27 @@ fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<Resolved
             "antialias amount must be in 0..=1 and radius must be finite and nonnegative".into(),
         );
     }
-    let filter = Kernel::mitchell_smooth(scene.filter_radius);
-    let border = filter.border();
+    let oversample = scene.oversample;
+    if !(1..=3).contains(&oversample) {
+        return Err("oversample must be in 1..=3".into());
+    }
+    if !(1..=4096).contains(&width) || !(1..=4096).contains(&height) || quality == 0 {
+        return Err("width and height must be 1..=4096; quality must be positive".into());
+    }
+    let filter = Kernel::mitchell_smooth(scene.filter_radius, oversample);
+    let border = filter.border(oversample);
+    let raster_width = width * oversample + 2 * border;
+    let raster_height = height * oversample + 2 * border;
+    let raster_area = raster_width * raster_height;
+    // Preserve the previous maximum raster allocation independently of the work budget.
+    if raster_area > (4096 + 4) * (4096 + 4) {
+        return Err("padded raster exceeds preview size limit".into());
+    }
     let layers = scene.layers.len();
     if layers == 0 || scene.layers.iter().any(|layer| layer.transforms.is_empty()) {
         return Err("expected a nonempty set of layers with transforms".into());
     }
-    let requested = sample_budget(width, height, quality, border, cap)?;
+    let requested = sample_budget(raster_area, quality, oversample, cap)?;
     // The Java worker completes a full layer round even at the budget boundary.
     let sample_budget = requested.next_multiple_of(layers);
     if sample_budget > cap {
@@ -779,8 +792,9 @@ fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<Resolved
     let settings = StillSettings {
         request,
         border,
-        raster_width: width + 2 * border,
-        raster_height: height + 2 * border,
+        oversample,
+        raster_width,
+        raster_height,
         sample_budget,
         pixels_per_unit: pixels_per_unit(scene, width, height),
         filter_radius: scene.filter_radius,
@@ -794,21 +808,28 @@ fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<Resolved
 
 // Opaque-black path of JWildfire's LogScaleCalculator,
 // LogDensityFilter and GammaCorrectionFilter, at the default color settings.
-fn shade(
-    scene: &Scene,
-    width: usize,
-    height: usize,
-    quality: usize,
-    ppu: f64,
-    raster: &[Bin],
-    filter: &Kernel,
-) -> Vec<u8> {
+fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel) -> Vec<u8> {
+    let StillSettings {
+        request:
+            RenderRequest {
+                width,
+                height,
+                quality,
+                ..
+            },
+        pixels_per_unit: ppu,
+        oversample,
+        border,
+        raster_width: stride,
+        raster_height,
+        ..
+    } = settings;
     const WHITE_LEVEL: f64 = 220.0;
     const LOW_DENSITY_BRIGHTNESS: f64 = 0.24;
     let area = (width * height) as f64 / (ppu * ppu);
-    let k1 = 2.0 * scene.brightness;
+    let k1 = 2.0 * scene.brightness / oversample as f64;
     let k2 = 1.0 / (area * quality as f64);
-    let glow = LOW_DENSITY_BRIGHTNESS * k2 * area;
+    let glow = LOW_DENSITY_BRIGHTNESS * k2 * area / oversample as f64;
     let gamma = 1.0 / scene.gamma;
     let threshold = scene.threshold;
     let threshold_scale = threshold.powf(gamma - 1.0);
@@ -817,11 +838,9 @@ fn shade(
         (k1 * (1.0 + count * k2).log10() + glow / (count + 1.0)) / (WHITE_LEVEL * count)
     };
     let scales: [f64; 513] = std::array::from_fn(|i| log_scale(i as u32));
-    let border = filter.border();
-    let stride = width + 2 * border;
-    let smoothing = Kernel::gaussian();
+    let smoothing = Kernel::gaussian(oversample);
     let sample = |(px, py, weight): (usize, usize, f64)| {
-        if px >= stride || py >= height + 2 * border {
+        if px >= stride || py >= raster_height {
             return None;
         }
         let bin = raster[py * stride + px];
@@ -838,22 +857,30 @@ fn shade(
     for y in 0..height {
         for x in 0..width {
             let mut rgb = [0.0; 3];
-            for (weight, scale, bin) in filter.taps(x, y, border).filter_map(sample) {
-                for (channel, sum) in rgb.iter_mut().zip(bin.rgb) {
-                    *channel += weight * scale * f64::from(sum);
-                }
-            }
-            // Despite its name, Java classifies Mitchell Smooth as sharpening.
-            // It uses the Mitchell taps for color and Gaussian taps for intensity.
+            let sx = x * oversample;
+            let sy = y * oversample;
             let intensity = if filter.size == 1 {
-                filter
-                    .taps(x, y, border)
-                    .filter_map(sample)
-                    .map(|(_, scale, bin)| scale * f64::from(bin.count) * WHITE_LEVEL)
-                    .sum::<f64>()
+                let mut intensity = 0.0;
+                for px in sx..sx + oversample {
+                    for py in sy..sy + oversample {
+                        if let Some((_, scale, bin)) = sample((px + border, py + border, 1.0)) {
+                            for (channel, sum) in rgb.iter_mut().zip(bin.rgb) {
+                                *channel += scale * f64::from(sum);
+                            }
+                            intensity += scale * f64::from(bin.count) * WHITE_LEVEL;
+                        }
+                    }
+                }
+                intensity
             } else {
+                for (weight, scale, bin) in filter.taps(sx, sy, border).filter_map(sample) {
+                    for (channel, sum) in rgb.iter_mut().zip(bin.rgb) {
+                        *channel += weight * scale * f64::from(sum);
+                    }
+                }
+                // Java uses Mitchell for color but Gaussian for intensity.
                 smoothing
-                    .taps(x, y, border)
+                    .taps(sx, sy, border)
                     .filter_map(sample)
                     .map(|(weight, scale, bin)| {
                         (weight * WHITE_LEVEL) * (scale * f64::from(bin.count))
@@ -878,13 +905,16 @@ fn shade(
     pixels
 }
 
-fn sample_budget(w: usize, h: usize, q: usize, border: usize, cap: usize) -> Result<usize, String> {
-    if !(1..=4096).contains(&w) || !(1..=4096).contains(&h) || q == 0 {
-        return Err("width and height must be 1..=4096; quality must be positive".into());
-    }
-    let count = (w + 2 * border) * (h + 2 * border);
-    match count.checked_mul(q) {
-        Some(samples) if samples <= cap => Ok(samples),
-        _ => Err(format!("sample budget exceeds {cap} iterations")),
-    }
+fn sample_budget(
+    area: usize,
+    quality: usize,
+    oversample: usize,
+    cap: usize,
+) -> Result<usize, String> {
+    // Round half up after dividing by O, not O².
+    area.checked_mul(quality)
+        .and_then(|n| n.checked_add(oversample / 2))
+        .map(|n| n / oversample)
+        .filter(|&n| n <= cap)
+        .ok_or_else(|| format!("sample budget exceeds {cap} iterations"))
 }

@@ -46,8 +46,11 @@ The output size is twice the source size. The opaque-black renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
 intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute
 keeps the prior unfiltered preview behavior; the missing-attribute case does
-not reproduce Java’s preference default. Other radii, kernels, oversampling,
-and adaptive antialiasing are not supported.
+not reproduce Java’s preference default. Spatial `oversample` accepts integers
+1 through 3 (default 1). It changes the subpixel raster, not the output image
+size. With filtering disabled, reconstruction sums the tone-scaled subpixels;
+with filtering enabled, the kernels operate on the subpixel grid. Other radii,
+kernels, and adaptive antialiasing are not supported.
 
 The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, TINA0003, TINA0001, TINA0007, TINA0005, TINA0015, TINA0023, TINA0025, TINA0032, TINA0002, TINA0012, TINA0017, TINA0020, TINA0022, and TINA0026
 from the validated JWildfire 9.20 source export, not copies in this repository. To run the scene

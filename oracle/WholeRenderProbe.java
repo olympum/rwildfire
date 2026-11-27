@@ -35,7 +35,7 @@ public final class WholeRenderProbe {
     flame.setDeRadius(0.0);
     flame.setAntialiasAmount(Double.parseDouble(args[6]));
     flame.setAntialiasRadius(Double.parseDouble(args[7]));
-    if (flame.getSpatialOversampling() != 1 || flame.getLayers().size() != Integer.parseInt(args[8])) {
+    if (flame.getSpatialOversampling() != Integer.parseInt(args[9]) || flame.getSpatialFilterRadius() != Double.parseDouble(args[10]) || flame.getLayers().size() != Integer.parseInt(args[8])) {
       throw new AssertionError("unexpected layer count or oversampling");
     }
     // Renderer context and its only worker both obtain the cached MARSAGLIA#0 instance.

@@ -16,7 +16,7 @@ The checkout is external. Nothing from upstream is vendored into this
 repository. `prepare` fetches the pinned commit into an ignored bare cache by
 default, or accepts an explicit clean checkout with `--source`.
 
-## Production CPU stills: whole-render-v2
+## Production CPU stills: whole-render-v3
 
 After preparing the pinned source, run `python3 tools/check_whole_render.py`
 (or append the path to a clean pinned checkout). The standard gate also runs it.
@@ -33,6 +33,11 @@ capture has a fresh JVM and empty preference home. Each scene's two captures
 must have identical bins and RGB; a third capture at quality 21 must have more
 hits and a different raster. The budget reported here is calculated from the
 padded dimensions and requested quality, not a worker instrumentation counter.
+For oversample O, round quality × padded raster area / O, then round up to
+a complete layer round. The output stays 160×120. The oversample-2 fixture
+uses radius 1 with a 326×246 raster; oversample-3 uses radius 0 with a
+480×360 raster. The radius-1 oversample-3 fixture uses a 490×370 raster
+and exercises rounding up from a fractional sample budget.
 
 Artifacts, including PNGs, binary captures, per-process logs, and provenance with
 input and output hashes, are kept under the reported ignored artifact directory.

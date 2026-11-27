@@ -14,6 +14,7 @@ pub struct Scene {
     pub gamma: f64,
     pub threshold: f64,
     pub filter_radius: f64,
+    pub oversample: usize,
     pub layers: Vec<Layer>,
 }
 
@@ -178,10 +179,16 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "cam_perspective",
         ],
     )?;
-    for (key, expected) in [("oversample", 1.0), ("temporal_samples", 1.0)] {
-        if number(n, key, expected)? != expected {
-            return Err(format!("unsupported non-default {key}"));
-        }
+    let oversample = n
+        .attribute("oversample")
+        .unwrap_or("1")
+        .parse::<usize>()
+        .map_err(|_| "oversample must be an integer in 1..=3")?;
+    if !(1..=3).contains(&oversample) {
+        return Err("oversample must be in 1..=3".into());
+    }
+    if number(n, "temporal_samples", 1.0)? != 1.0 {
+        return Err("unsupported non-default temporal_samples".into());
     }
     if n.attribute("background").is_some() && vector::<f64, 3>(n, "background")? != [0.; 3] {
         return Err("only a black background is supported".into());
@@ -257,6 +264,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         gamma,
         threshold,
         filter_radius,
+        oversample,
         layers,
     })
 }
