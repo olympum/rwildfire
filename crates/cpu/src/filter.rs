@@ -7,19 +7,18 @@ pub(crate) struct Kernel {
 }
 
 impl Kernel {
-    pub(crate) fn mitchell_smooth(radius: f64) -> Self {
-        Self::new(radius, 2.0, coefficient)
+    pub(crate) fn mitchell_smooth(radius: f64, oversample: usize) -> Self {
+        Self::new(radius, oversample, 2.0, coefficient)
     }
 
-    pub(crate) fn gaussian() -> Self {
-        Self::new(0.75, 1.5, |x| {
+    pub(crate) fn gaussian(oversample: usize) -> Self {
+        Self::new(0.75, oversample, 1.5, |x| {
             (-2.0 * x * x).exp() * (2.0 / std::f64::consts::PI).sqrt()
         })
     }
 
-    fn new(radius: f64, support: f64, coefficient: impl Fn(f64) -> f64) -> Self {
-        // At oversampling 1 the Java filter width is trunc(2 * support * radius).
-        let width = (2.0 * support * radius) as usize;
+    fn new(radius: f64, oversample: usize, support: f64, coefficient: impl Fn(f64) -> f64) -> Self {
+        let width = (2.0 * oversample as f64 * support * radius) as usize;
         if width == 0 {
             return Self {
                 size: 1,
@@ -40,7 +39,7 @@ impl Kernel {
             }
         }
         for weight in &mut weights {
-            *weight /= sum;
+            *weight = *weight / sum * oversample as f64 * oversample as f64;
         }
         Self { size, weights }
     }
@@ -51,21 +50,23 @@ impl Kernel {
         y: usize,
         border: usize,
     ) -> impl Iterator<Item = (usize, usize, f64)> + '_ {
-        // Java samples output + border - (kernel_size / 2 - 1).
-        let offset = if self.size == 1 {
-            border
-        } else {
-            border + 1 - self.border()
-        };
+        // Java offsets the kernel center by one subpixel, then adds the raster border.
+        let half = self.size / 2;
         self.weights
             .iter()
             .copied()
             .enumerate()
-            .map(move |(i, w)| (x + offset + i % self.size, y + offset + i / self.size, w))
+            .filter_map(move |(i, w)| {
+                Some((
+                    (x + border + 1 + i % self.size).checked_sub(half)?,
+                    (y + border + 1 + i / self.size).checked_sub(half)?,
+                    w,
+                ))
+            })
     }
 
-    pub(crate) fn border(&self) -> usize {
-        self.size / 2
+    pub(crate) fn border(&self, oversample: usize) -> usize {
+        self.size.saturating_sub(oversample) / 2
     }
 }
 
