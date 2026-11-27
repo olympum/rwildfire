@@ -73,11 +73,11 @@ def check(source):
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3"):
+    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
         layers = 3 if name == "layer-rounds" else 1
-        oversample, radius = {"oversample-2": (2, 1), "oversample-3": (3, 0)}.get(name, (1, 1))
+        oversample, radius = {"oversample-2": (2, 1), "oversample-3": (3, 0), "oversample-3-filtered": (3, 1)}.get(name, (1, 1))
         record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers,
                   "oversample": oversample, "filter_radius": radius, "runs": {}}
 

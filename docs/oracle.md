@@ -36,7 +36,8 @@ padded dimensions and requested quality, not a worker instrumentation counter.
 For oversample O, round quality × padded raster area / O, then round up to
 a complete layer round. The output stays 160×120. The oversample-2 fixture
 uses radius 1 with a 326×246 raster; oversample-3 uses radius 0 with a
-480×360 raster.
+480×360 raster. The radius-1 oversample-3 fixture uses a 490×370 raster
+and exercises rounding up from a fractional sample budget.
 
 Artifacts, including PNGs, binary captures, per-process logs, and provenance with
 input and output hashes, are kept under the reported ignored artifact directory.
