@@ -11,6 +11,17 @@ impl Kernel {
         Self::new(radius, oversample, 2.0, coefficient)
     }
 
+    pub(crate) fn sine_pow10(radius: f64, oversample: usize) -> Self {
+        Self::new(radius, oversample, 1.0, |x| {
+            let v = (2.0 * (10.0 * x.log10()).exp() * 2.0 - 1.0).acos() / std::f64::consts::PI;
+            if v.is_finite() {
+                v
+            } else {
+                0.0
+            }
+        })
+    }
+
     pub(crate) fn gaussian(oversample: usize) -> Self {
         Self::new(0.75, oversample, 1.5, |x| {
             (-2.0 * x * x).exp() * (2.0 / std::f64::consts::PI).sqrt()

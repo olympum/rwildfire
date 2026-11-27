@@ -38,6 +38,9 @@ public final class WholeRenderProbe {
     if (flame.getSpatialOversampling() != Integer.parseInt(args[9]) || flame.getSpatialFilterRadius() != Double.parseDouble(args[10]) || flame.getLayers().size() != Integer.parseInt(args[8])) {
       throw new AssertionError("unexpected layer count or oversampling");
     }
+    if (!flame.getSpatialFilterKernel().name().equals(args[11])) {
+      throw new AssertionError("unexpected filter kernel: " + flame.getSpatialFilterKernel());
+    }
     // Renderer context and its only worker both obtain the cached MARSAGLIA#0 instance.
     RandomGeneratorFactory.getInstance(prefs, RandomGeneratorType.MARSAGLIA, 0).randomize(seed);
     RenderInfo info = new RenderInfo(width, height, RenderMode.PRODUCTION);
