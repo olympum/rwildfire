@@ -60,6 +60,12 @@ use the primary filter. This does not change projection jitter. The opaque-black
 and `vibrancy` (default 1, quantized and clamped by Java’s 256-step rule).
 These controls do not change the raw raster.
 
+With a black background, `bg_transparency="1"` makes the CLI write a
+straight-alpha RGBA PNG. `fg_opacity` defaults to 1 and changes alpha
+without premultiplying RGB. Library callers can explicitly select RGB8
+with `ResolvedStill::render` or RGBA8 with `ResolvedStill::render_rgba`,
+regardless of the document’s PNG preference.
+
 The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, TINA0003, TINA0001, TINA0007, TINA0005, TINA0015, TINA0023, TINA0025, TINA0032, TINA0002, TINA0012, TINA0017, TINA0020, TINA0022, and TINA0026
 from the validated JWildfire 9.20 source export, not copies in this repository. To run the scene
 check separately with JDK 8 and a clean checkout of the pinned revision:

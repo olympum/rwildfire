@@ -14,7 +14,7 @@ const INDEXER: f64 = 1.0 / STEP;
 static KNOTS: [u64; INTERVALS + 1] = include!("strict_atan_table.in");
 static DERIVATIVES: OnceLock<Vec<[f64; 4]>> = OnceLock::new();
 
-fn atan(angle: f64) -> f64 {
+pub(crate) fn atan(angle: f64) -> f64 {
     let abs = angle.abs();
     let result = if abs == 1.0 {
         FRAC_PI_4

@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     for dimension in [settings.raster_width, settings.raster_height] {
         output.write_all(&u32::try_from(dimension)?.to_be_bytes())?;
     }
-    let rgb = job.render_with_raster(|bins| {
+    let capture = |bins: &[rwildfire_cpu::Bin]| {
         let write = || -> std::io::Result<()> {
             for bin in bins {
                 output.write_all(&bin.count.to_be_bytes())?;
@@ -42,7 +42,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
         let mut write = write;
         write().map_err(|err| err.to_string())
-    })?;
-    fs::write(Path::new(prefix).with_extension("rgb"), rgb)?;
+    };
+    let (extension, pixels) = if scene.bg_transparency {
+        ("rgba", job.render_rgba_with_raster(capture)?)
+    } else {
+        ("rgb", job.render_with_raster(capture)?)
+    };
+    fs::write(Path::new(prefix).with_extension(extension), pixels)?;
     Ok(())
 }

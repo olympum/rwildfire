@@ -17,15 +17,17 @@ AA_AMOUNT, AA_RADIUS = 0.25, 0.5
 SCENES = ("TINA0010", "TINA0012")
 
 
-def read_capture(prefix, quality, layers=1, oversample=1, radius=1):
+def read_capture(prefix, quality, layers=1, oversample=1, radius=1, channels=3):
     raster = prefix.with_suffix(".raster").read_bytes()
-    rgb = prefix.with_suffix(".rgb").read_bytes()
+    rgb = prefix.with_suffix(".rgba" if channels == 4 else ".rgb").read_bytes()
     border = (3 * oversample + 1) // 2 if radius == 1 else 0
     w, h = WIDTH * oversample + 2 * border, HEIGHT * oversample + 2 * border
     if len(raster) != 8 + 16 * w * h or raster[:8] != struct.pack(">II", w, h):
         raise oracle.OracleError(f"{prefix.name}: invalid padded raster layout")
-    if len(rgb) != 3 * WIDTH * HEIGHT or not any(rgb):
+    if len(rgb) != channels * WIDTH * HEIGHT or not any(rgb):
         raise oracle.OracleError(f"{prefix.name}: invalid or black decoded image")
+    if channels == 4 and (not any(a == 0 for a in rgb[3::4]) or not any(0 < a < 255 for a in rgb[3::4])):
+        raise oracle.OracleError(f"{prefix.name}: expected clear and semitransparent pixels")
     hits = 0
     for count, r, g, b in struct.iter_unpack(">ifff", memoryview(raster)[8:]):
         if count < 0 or not all(math.isfinite(c) for c in (r, g, b)):
@@ -38,10 +40,10 @@ def read_capture(prefix, quality, layers=1, oversample=1, radius=1):
     return raster, rgb, hits, budget
 
 
-def compare(reference, candidate, label):
-    for index, description in ((0, "padded raster"), (1, "decoded RGB")):
+def compare(reference, candidate, label, channels=3):
+    for index, description in ((0, "padded raster"), (1, "decoded RGBA" if channels == 4 else "decoded RGB")):
         if reference[index] != candidate[index]:
-            start, stride, width = (8, 16, struct.unpack_from(">I", reference[0])[0]) if index == 0 else (0, 3, WIDTH)
+            start, stride, width = (8, 16, struct.unpack_from(">I", reference[0])[0]) if index == 0 else (0, channels, WIDTH)
             a, b = reference[index], candidate[index]
             first = next(i for i in range(start, len(a), stride) if a[i:i + stride] != b[i:i + stride])
             y, x = divmod((first - start) // stride, width)
@@ -66,14 +68,14 @@ def check(source):
     ], check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
-        "suite": "whole-render-v5", "upstream_commit": info["upstream_commit"],
+        "suite": "whole-render-v6", "upstream_commit": info["upstream_commit"],
         "source_tree": info["source_tree"], "source_digest_sha256": info["source_digest_sha256"],
         "java_version": jdk["java_version"], "javac_version": jdk["javac_version"],
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls"):
+    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls", "transparent-alpha"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
         layers = 3 if name == "layer-rounds" else 1
@@ -81,6 +83,9 @@ def check(source):
         record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers,
                   "oversample": oversample, "filter_radius": radius, "runs": {}}
 
+        channels = 4 if name == "transparent-alpha" else 3
+        pixel_format = "rgba" if channels == 4 else "rgb"
+        record["pixel_format"] = pixel_format
         kernel = "MITCHELL_SINEPOW" if name in ("adaptive-mitchell", "tone-controls") else "MITCHELL_SMOOTH"
         record["filter_kernel"] = kernel
 
@@ -93,14 +98,14 @@ def check(source):
                     jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
                     "-cp", runtime_cp, "WholeRenderProbe", str(source_flame), str(prefix),
                     str(WIDTH), str(HEIGHT), str(quality), str(SEED), str(amount), str(AA_RADIUS),
-                    str(layers), str(oversample), str(radius), expected_kernel,
+                    str(layers), str(oversample), str(radius), expected_kernel, str(channels == 4).lower(),
                 ], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
-            raster, rgb, hits, budget = read_capture(prefix, quality, layers, oversample, radius)
+            raster, rgb, hits, budget = read_capture(prefix, quality, layers, oversample, radius, channels)
             record["runs"][label] = {
                 "quality": quality, "hits": hits, "sample_budget": budget,
                 "antialias_amount": amount, "antialias_radius": AA_RADIUS,
                 **{suffix + "_sha256": oracle.sha256_file(prefix.with_suffix("." + suffix))
-                   for suffix in ("raster", "rgb", "png")},
+                   for suffix in ("raster", pixel_format, "png")},
             }
             return raster, rgb, hits, budget
 
@@ -111,7 +116,7 @@ def check(source):
         if a[1] != b[1]:
             raise oracle.OracleError(f"{name}: independent Java decoded RGB differs")
         bins = (len(a[0]) - 8) // 16
-        print(f"{name}: {bins:,} bins and {WIDTH * HEIGHT:,} RGB pixels match across JVMs "
+        print(f"{name}: {bins:,} bins and {WIDTH * HEIGHT:,} {pixel_format.upper()} pixels match across JVMs "
               f"({a[2]:,} hits / {a[3]:,} budget)", flush=True)
         if name == "adaptive-mitchell":
             fixed = work / "adaptive-fixed.flame"
@@ -135,6 +140,16 @@ def check(source):
                 different = sum(a[1][i:i + 3] != control[1][i:i + 3] for i in range(0, len(a[1]), 3))
                 record["runs"][f"default-{key}"]["input_sha256"] = oracle.sha256_file(control_flame)
                 print(f"{name}: default {key} preserves all {bins:,} bins and changes {different:,} RGB pixels", flush=True)
+        if channels == 4:
+            default = work / "default-opacity.flame"
+            default.write_text(scene.read_text(encoding="utf-8").replace(' fg_opacity="0.62"', ""), encoding="utf-8")
+            control = run("default-opacity", QUALITY, source_flame=default)
+            record["runs"]["default-opacity"]["input_sha256"] = oracle.sha256_file(default)
+            same_rgb = all(a[1][i:i + 3] == control[1][i:i + 3] for i in range(0, len(a[1]), 4))
+            different = sum(x != y for x, y in zip(a[1][3::4], control[1][3::4]))
+            if control[0] != a[0] or not same_rgb or not different:
+                raise oracle.OracleError(f"{name}: default opacity must change only alpha")
+            print(f"{name}: default opacity preserves {bins:,} bins and RGB; changes {different:,} alpha values", flush=True)
         changed = run("budget-control", QUALITY + 1)
         if changed[0] == a[0] or changed[2] <= a[2]:
             raise oracle.OracleError(f"{name}: extra sample budget did not increase raster hits")
@@ -148,15 +163,15 @@ def check(source):
                 "--example", "capture_whole_render", "--", str(scene), str(prefix),
                 str(WIDTH), str(HEIGHT), str(QUALITY), str(SEED), str(amount), str(AA_RADIUS),
             ], check=True, timeout=120)
-            candidate = read_capture(prefix, QUALITY, layers, oversample, radius)
-            compare(reference, candidate, f"{name} {mode}")
+            candidate = read_capture(prefix, QUALITY, layers, oversample, radius, channels)
+            compare(reference, candidate, f"{name} {mode}", channels)
             record["runs"][f"rust-{mode}"] = {
                 "quality": QUALITY, "hits": candidate[2], "sample_budget": candidate[3],
                 "antialias_amount": amount, "antialias_radius": AA_RADIUS,
                 **{suffix + "_sha256": oracle.sha256_file(prefix.with_suffix("." + suffix))
-                   for suffix in ("raster", "rgb")},
+                   for suffix in ("raster", pixel_format)},
             }
-            print(f"{name} {mode}: Rust matches Java in {bins:,} bins and {WIDTH * HEIGHT:,} RGB pixels", flush=True)
+            print(f"{name} {mode}: Rust matches Java in {bins:,} bins and {WIDTH * HEIGHT:,} {pixel_format.upper()} pixels", flush=True)
         provenance["scenes"][name] = record
     (work / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 

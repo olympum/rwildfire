@@ -623,10 +623,31 @@ impl ResolvedStill<'_> {
         self.render_with_raster(|_| Ok(()))
     }
 
+    /// Return row-major transparent RGBA8 (unassociated alpha) over black.
+    pub fn render_rgba(&self) -> Result<Vec<u8>, String> {
+        self.render_rgba_with_raster(|_| Ok(()))
+    }
+
     /// Capture the padded raster before shading for parity diagnostics.
     #[doc(hidden)]
     pub fn render_with_raster(
         &self,
+        capture: impl FnOnce(&[Bin]) -> Result<(), String>,
+    ) -> Result<Vec<u8>, String> {
+        self.render_pixels(false, capture)
+    }
+
+    #[doc(hidden)]
+    pub fn render_rgba_with_raster(
+        &self,
+        capture: impl FnOnce(&[Bin]) -> Result<(), String>,
+    ) -> Result<Vec<u8>, String> {
+        self.render_pixels(true, capture)
+    }
+
+    fn render_pixels(
+        &self,
+        with_alpha: bool,
         capture: impl FnOnce(&[Bin]) -> Result<(), String>,
     ) -> Result<Vec<u8>, String> {
         let StillSettings {
@@ -691,7 +712,13 @@ impl ResolvedStill<'_> {
             flush_layer(&mut raster, buffer, orbit.layer.weight);
         }
         capture(&raster)?;
-        Ok(shade(self.scene, self.settings, &raster, &self.filter))
+        Ok(shade(
+            self.scene,
+            self.settings,
+            &raster,
+            &self.filter,
+            with_alpha,
+        ))
     }
 }
 
@@ -808,7 +835,13 @@ fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<Resolved
 
 // Opaque-black path of JWildfire's LogScaleCalculator,
 // LogDensityFilter and GammaCorrectionFilter, at the default color settings.
-fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel) -> Vec<u8> {
+fn shade(
+    scene: &Scene,
+    settings: StillSettings,
+    raster: &[Bin],
+    filter: &Kernel,
+    with_alpha: bool,
+) -> Vec<u8> {
     let StillSettings {
         request:
             RenderRequest {
@@ -866,7 +899,9 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
             .unwrap_or_else(|| log_scale(bin.count));
         Some((weight, scale, bin))
     };
-    let mut pixels = Vec::with_capacity(width * height * 3);
+    let channels = if with_alpha { 4 } else { 3 };
+    let alpha_scale = 1.0 - crate::fast_atan::atan(3.0 * (scene.foreground_opacity - 1.0)) / 1.25;
+    let mut pixels = Vec::with_capacity(width * height * channels);
     for y in 0..height {
         for x in 0..width {
             let mut rgb = [0.0; 3];
@@ -920,7 +955,7 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
                     .sum::<f64>()
             };
             if intensity <= 0.0 {
-                pixels.extend([0; 3]);
+                pixels.extend_from_slice(&[0; 4][..channels]);
                 continue;
             }
             let power = intensity.powf(gamma);
@@ -941,6 +976,9 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
                 };
                 (mixed + 0.5) as u8
             }));
+            if with_alpha {
+                pixels.push((alpha * 255.0 * alpha_scale + 0.5) as u8);
+            }
         }
     }
     pixels
