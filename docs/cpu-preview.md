@@ -55,7 +55,10 @@ kernels and filter-indicator overlays are not supported. At radius 1,
 raster. It accepts `filter_type="ADAPTIVE"` (or omitted), `filter_sharpness`
 (default 4.0), and `filter_low_density` (default 0.025). It selects SinePow10
 for sparse or smooth areas and Mitchell Smooth for detail; empty selector bins
-use the primary filter. This does not change projection jitter.
+use the primary filter. This does not change projection jitter. The opaque-black path accepts `contrast`
+(positive, default 1), `low_density_brightness` (nonnegative, default 0.24),
+and `vibrancy` (default 1, quantized and clamped by Java’s 256-step rule).
+These controls do not change the raw raster.
 
 The parity gate uses the originals TINA0010, TINA0004, TINA0006, TINA0008, TINA0011, TINA0021, TINA0009, TINA0018, TINA0013, TINA0016, TINA0003, TINA0001, TINA0007, TINA0005, TINA0015, TINA0023, TINA0025, TINA0032, TINA0002, TINA0012, TINA0017, TINA0020, TINA0022, and TINA0026
 from the validated JWildfire 9.20 source export, not copies in this repository. To run the scene

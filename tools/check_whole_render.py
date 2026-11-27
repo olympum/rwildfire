@@ -66,22 +66,22 @@ def check(source):
     ], check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
-        "suite": "whole-render-v4", "upstream_commit": info["upstream_commit"],
+        "suite": "whole-render-v5", "upstream_commit": info["upstream_commit"],
         "source_tree": info["source_tree"], "source_digest_sha256": info["source_digest_sha256"],
         "java_version": jdk["java_version"], "javac_version": jdk["javac_version"],
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell"):
+    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
         layers = 3 if name == "layer-rounds" else 1
-        oversample, radius = {"oversample-2": (2, 1), "oversample-3": (3, 0), "oversample-3-filtered": (3, 1), "adaptive-mitchell": (2, 1)}.get(name, (1, 1))
+        oversample, radius = {"oversample-2": (2, 1), "oversample-3": (3, 0), "oversample-3-filtered": (3, 1), "adaptive-mitchell": (2, 1), "tone-controls": (2, 1)}.get(name, (1, 1))
         record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers,
                   "oversample": oversample, "filter_radius": radius, "runs": {}}
 
-        kernel = "MITCHELL_SINEPOW" if name == "adaptive-mitchell" else "MITCHELL_SMOOTH"
+        kernel = "MITCHELL_SINEPOW" if name in ("adaptive-mitchell", "tone-controls") else "MITCHELL_SMOOTH"
         record["filter_kernel"] = kernel
 
         def run(label, quality, amount=AA_AMOUNT, source_flame=scene, expected_kernel=kernel):
@@ -125,6 +125,16 @@ def check(source):
             different = sum(a[1][i:i + 3] != control[1][i:i + 3] for i in range(0, len(a[1]), 3))
             record["fixed_control_sha256"] = oracle.sha256_file(fixed)
             print(f"{name}: fixed control preserves all {bins:,} bins and changes {different:,} RGB pixels", flush=True)
+        if name == "tone-controls":
+            for key, value in (("contrast", "1.63"), ("vibrancy", "0.61"), ("low_density_brightness", "1.37")):
+                control_flame = work / f"tone-default-{key}.flame"
+                control_flame.write_text(scene.read_text(encoding="utf-8").replace(f' {key}="{value}"', ""), encoding="utf-8")
+                control = run(f"default-{key}", QUALITY, source_flame=control_flame)
+                if a[0] != control[0] or a[1] == control[1]:
+                    raise oracle.OracleError(f"{name}: default {key} must preserve bins and change RGB")
+                different = sum(a[1][i:i + 3] != control[1][i:i + 3] for i in range(0, len(a[1]), 3))
+                record["runs"][f"default-{key}"]["input_sha256"] = oracle.sha256_file(control_flame)
+                print(f"{name}: default {key} preserves all {bins:,} bins and changes {different:,} RGB pixels", flush=True)
         changed = run("budget-control", QUALITY + 1)
         if changed[0] == a[0] or changed[2] <= a[2]:
             raise oracle.OracleError(f"{name}: extra sample budget did not increase raster hits")

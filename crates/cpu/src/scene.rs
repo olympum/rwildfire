@@ -11,6 +11,9 @@ pub struct Scene {
     pub perspective: f64,
     pub center: [f64; 2],
     pub brightness: f64,
+    pub contrast: f64,
+    pub vibrancy: f64,
+    pub low_density_brightness: f64,
     pub gamma: f64,
     pub threshold: f64,
     pub filter_radius: f64,
@@ -178,6 +181,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "quality",
             "background",
             "brightness",
+            "contrast",
+            "vibrancy",
+            "low_density_brightness",
             "gamma",
             "gamma_threshold",
             "estimator_radius",
@@ -214,6 +220,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let yaw_degrees = number(n, "cam_yaw", 0.)? * 180.0 / std::f64::consts::PI;
     let perspective = number(n, "cam_perspective", 0.)?;
     let brightness = number(n, "brightness", 4.)?;
+    let contrast = number(n, "contrast", 1.0)?;
+    let vibrancy = number(n, "vibrancy", 1.0)?;
+    let low_density_brightness = number(n, "low_density_brightness", 0.24)?;
     let gamma = number(n, "gamma", 4.)?;
     let threshold = number(n, "gamma_threshold", 0.04)?;
     let filter_radius = number(n, "filter", 0.0)?;
@@ -239,6 +248,8 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         || ppu <= 0.
         || zoom <= 0.
         || brightness <= 0.
+        || contrast <= 0.
+        || low_density_brightness < 0.
         || gamma <= 0.
         || threshold <= 0.
         || !(ppu * zoom).is_finite()
@@ -285,6 +296,9 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         perspective,
         center,
         brightness,
+        contrast,
+        vibrancy,
+        low_density_brightness,
         gamma,
         threshold,
         filter_radius,
