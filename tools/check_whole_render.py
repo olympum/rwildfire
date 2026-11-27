@@ -66,31 +66,34 @@ def check(source):
     ], check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
-        "suite": "whole-render-v3", "upstream_commit": info["upstream_commit"],
+        "suite": "whole-render-v4", "upstream_commit": info["upstream_commit"],
         "source_tree": info["source_tree"], "source_digest_sha256": info["source_digest_sha256"],
         "java_version": jdk["java_version"], "javac_version": jdk["javac_version"],
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered"):
+    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
         layers = 3 if name == "layer-rounds" else 1
-        oversample, radius = {"oversample-2": (2, 1), "oversample-3": (3, 0), "oversample-3-filtered": (3, 1)}.get(name, (1, 1))
+        oversample, radius = {"oversample-2": (2, 1), "oversample-3": (3, 0), "oversample-3-filtered": (3, 1), "adaptive-mitchell": (2, 1)}.get(name, (1, 1))
         record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers,
                   "oversample": oversample, "filter_radius": radius, "runs": {}}
 
-        def run(label, quality, amount=AA_AMOUNT):
+        kernel = "MITCHELL_SINEPOW" if name == "adaptive-mitchell" else "MITCHELL_SMOOTH"
+        record["filter_kernel"] = kernel
+
+        def run(label, quality, amount=AA_AMOUNT, source_flame=scene, expected_kernel=kernel):
             prefix = work / f"{name}-{label}"
             home = prefix.with_suffix(".home")
             home.mkdir()
             with prefix.with_suffix(".log").open("wb") as log:
                 subprocess.run([
                     jdk["java"], "-Djava.awt.headless=true", f"-Duser.home={home}",
-                    "-cp", runtime_cp, "WholeRenderProbe", str(scene), str(prefix),
+                    "-cp", runtime_cp, "WholeRenderProbe", str(source_flame), str(prefix),
                     str(WIDTH), str(HEIGHT), str(quality), str(SEED), str(amount), str(AA_RADIUS),
-                    str(layers), str(oversample), str(radius),
+                    str(layers), str(oversample), str(radius), expected_kernel,
                 ], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
             raster, rgb, hits, budget = read_capture(prefix, quality, layers, oversample, radius)
             record["runs"][label] = {
@@ -110,6 +113,18 @@ def check(source):
         bins = (len(a[0]) - 8) // 16
         print(f"{name}: {bins:,} bins and {WIDTH * HEIGHT:,} RGB pixels match across JVMs "
               f"({a[2]:,} hits / {a[3]:,} budget)", flush=True)
+        if name == "adaptive-mitchell":
+            fixed = work / "adaptive-fixed.flame"
+            fixed.write_text(scene.read_text(encoding="utf-8").replace(
+                'filter_kernel="MITCHELL_SINEPOW" filter_type="ADAPTIVE"',
+                'filter_kernel="MITCHELL_SMOOTH" filter_type="GLOBAL_SHARPENING"',
+            ), encoding="utf-8")
+            control = run("fixed-filter", QUALITY, source_flame=fixed, expected_kernel="MITCHELL_SMOOTH")
+            if a[0] != control[0] or a[1] == control[1]:
+                raise oracle.OracleError("adaptive-mitchell: fixed control must preserve bins and change RGB")
+            different = sum(a[1][i:i + 3] != control[1][i:i + 3] for i in range(0, len(a[1]), 3))
+            record["fixed_control_sha256"] = oracle.sha256_file(fixed)
+            print(f"{name}: fixed control preserves all {bins:,} bins and changes {different:,} RGB pixels", flush=True)
         changed = run("budget-control", QUALITY + 1)
         if changed[0] == a[0] or changed[2] <= a[2]:
             raise oracle.OracleError(f"{name}: extra sample budget did not increase raster hits")

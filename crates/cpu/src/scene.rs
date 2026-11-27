@@ -14,8 +14,15 @@ pub struct Scene {
     pub gamma: f64,
     pub threshold: f64,
     pub filter_radius: f64,
+    pub(crate) adaptive_filter: Option<AdaptiveFilter>,
     pub oversample: usize,
     pub layers: Vec<Layer>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct AdaptiveFilter {
+    pub(crate) sharpness: f64,
+    pub(crate) low_density: f64,
 }
 
 pub struct Layer {
@@ -164,6 +171,10 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "rotate",
             "oversample",
             "filter",
+            "filter_kernel",
+            "filter_type",
+            "filter_sharpness",
+            "filter_low_density",
             "quality",
             "background",
             "brightness",
@@ -206,6 +217,19 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let gamma = number(n, "gamma", 4.)?;
     let threshold = number(n, "gamma_threshold", 0.04)?;
     let filter_radius = number(n, "filter", 0.0)?;
+    let adaptive_filter = match (n.attribute("filter_kernel"), n.attribute("filter_type")) {
+        (Some("MITCHELL_SINEPOW"), None | Some("ADAPTIVE")) => Some(AdaptiveFilter {
+            sharpness: number(n, "filter_sharpness", 4.0)?,
+            low_density: number(n, "filter_low_density", 0.025)?,
+        }),
+        (None | Some("MITCHELL_SMOOTH"), None | Some("GLOBAL_SHARPENING"))
+            if n.attribute("filter_sharpness").is_none()
+                && n.attribute("filter_low_density").is_none() =>
+        {
+            None
+        }
+        _ => return Err("unsupported filter kernel, type or thresholds".into()),
+    };
     if filter_radius != 0.0 && filter_radius != 1.0 {
         return Err("only filter radii 0 and 1 are supported".into());
     }
@@ -264,6 +288,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         gamma,
         threshold,
         filter_radius,
+        adaptive_filter,
         oversample,
         layers,
     })

@@ -839,6 +839,18 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
     };
     let scales: [f64; 513] = std::array::from_fn(|i| log_scale(i as u32));
     let smoothing = Kernel::gaussian(oversample);
+    let adaptive = scene
+        .adaptive_filter
+        .filter(|_| settings.filter_radius == 1.0)
+        .map(|config| {
+            let radius = settings.filter_radius + 0.25;
+            (
+                config,
+                Kernel::sine_pow10(1.5 * radius, oversample),
+                Kernel::sine_pow10(radius, oversample),
+                Kernel::mitchell_smooth(0.75 * radius, oversample),
+            )
+        });
     let sample = |(px, py, weight): (usize, usize, f64)| {
         if px >= stride || py >= raster_height {
             return None;
@@ -859,6 +871,24 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
             let mut rgb = [0.0; 3];
             let sx = x * oversample;
             let sy = y * oversample;
+            let (color_filter, sharpen) = match &adaptive {
+                // The selector uses the raw raster origin, not the padded tap origin.
+                Some((config, low, soft, detail)) => match sample((sx, sy, 1.0)) {
+                    None => (filter, true),
+                    Some((_, scale, bin))
+                        if scale * f64::from(bin.count) * WHITE_LEVEL < config.low_density =>
+                    {
+                        (low, false)
+                    }
+                    Some(_)
+                        if scharr_log(raster, stride, raster_height, sx, sy) < config.sharpness =>
+                    {
+                        (soft, false)
+                    }
+                    Some(_) => (detail, true),
+                },
+                None => (filter, true),
+            };
             let intensity = if filter.size == 1 {
                 let mut intensity = 0.0;
                 for px in sx..sx + oversample {
@@ -873,13 +903,14 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
                 }
                 intensity
             } else {
-                for (weight, scale, bin) in filter.taps(sx, sy, border).filter_map(sample) {
+                for (weight, scale, bin) in color_filter.taps(sx, sy, border).filter_map(sample) {
                     for (channel, sum) in rgb.iter_mut().zip(bin.rgb) {
                         *channel += weight * scale * f64::from(sum);
                     }
                 }
-                // Java uses Mitchell for color but Gaussian for intensity.
-                smoothing
+                // Java substitutes Gaussian intensity only for a sharpening kernel.
+                let intensity_filter = if sharpen { &smoothing } else { color_filter };
+                intensity_filter
                     .taps(sx, sy, border)
                     .filter_map(sample)
                     .map(|(weight, scale, bin)| {
@@ -903,6 +934,24 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
         }
     }
     pixels
+}
+
+fn scharr_log(raster: &[Bin], w: usize, h: usize, x: usize, y: usize) -> f64 {
+    let lum = |dx, dy| {
+        let (Some(px), Some(py)) = (x.checked_add_signed(dx), y.checked_add_signed(dy)) else {
+            return 0.0;
+        };
+        if px >= w || py >= h {
+            return 0.0;
+        }
+        let [r, g, b] = raster[py * w + px].rgb.map(f64::from);
+        0.299 * r + 0.588 * g + 0.113 * b
+    };
+    let (tl, tr, bl, br) = (lum(-1, -1), lum(1, -1), lum(-1, 1), lum(1, 1));
+    // Pinned Java's x derivative reads the top-right tap twice.
+    let sx = 3.0 * tl - 3.0 * tr + 10.0 * lum(-1, 0) - 10.0 * tr + 3.0 * bl - 3.0 * br;
+    let sy = 3.0 * tl + 10.0 * lum(0, -1) + 3.0 * tr - 3.0 * bl - 10.0 * lum(0, 1) - 3.0 * br;
+    (1.0 + (sx * sx + sy * sy).sqrt()).log10()
 }
 
 fn sample_budget(
