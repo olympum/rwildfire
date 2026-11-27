@@ -11,6 +11,8 @@ pub struct Scene {
     pub perspective: f64,
     pub center: [f64; 2],
     pub brightness: f64,
+    pub bg_transparency: bool,
+    pub foreground_opacity: f64,
     pub contrast: f64,
     pub vibrancy: f64,
     pub low_density_brightness: f64,
@@ -180,6 +182,8 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "filter_low_density",
             "quality",
             "background",
+            "bg_transparency",
+            "fg_opacity",
             "brightness",
             "contrast",
             "vibrancy",
@@ -219,6 +223,12 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     let pitch_degrees = number(n, "cam_pitch", 0.)? * 180.0 / std::f64::consts::PI;
     let yaw_degrees = number(n, "cam_yaw", 0.)? * 180.0 / std::f64::consts::PI;
     let perspective = number(n, "cam_perspective", 0.)?;
+    let bg_transparency = match n.attribute("bg_transparency") {
+        None | Some("0") => false,
+        Some("1") => true,
+        _ => return Err("bg_transparency must be 0 or 1".into()),
+    };
+    let foreground_opacity = number(n, "fg_opacity", 1.0)?;
     let brightness = number(n, "brightness", 4.)?;
     let contrast = number(n, "contrast", 1.0)?;
     let vibrancy = number(n, "vibrancy", 1.0)?;
@@ -296,6 +306,8 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         perspective,
         center,
         brightness,
+        bg_transparency,
+        foreground_opacity,
         contrast,
         vibrancy,
         low_density_brightness,

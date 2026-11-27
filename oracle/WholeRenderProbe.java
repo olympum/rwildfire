@@ -43,9 +43,11 @@ public final class WholeRenderProbe {
     }
     // Renderer context and its only worker both obtain the cached MARSAGLIA#0 instance.
     RandomGeneratorFactory.getInstance(prefs, RandomGeneratorType.MARSAGLIA, 0).randomize(seed);
+    boolean withAlpha = Boolean.parseBoolean(args[12]);
+    if (withAlpha && !flame.isBGTransparency()) throw new AssertionError("expected transparent flame");
     RenderInfo info = new RenderInfo(width, height, RenderMode.PRODUCTION);
     info.setStoreRaster(true);
-    RenderedFlame result = new FlameRenderer(flame, prefs, false, false).renderFlame(info);
+    RenderedFlame result = new FlameRenderer(flame, prefs, withAlpha, false).renderFlame(info);
     AbstractRaster raster = result.getRaster();
     if (raster == null || raster.getClass() != RasterFloatInt.class) {
       throw new AssertionError("expected retained float/int raster");
@@ -72,13 +74,14 @@ public final class WholeRenderProbe {
     if (image == null || image.getWidth() != width || image.getHeight() != height) {
       throw new AssertionError("invalid decoded PNG dimensions");
     }
-    try (DataOutputStream out = output(args[1], ".rgb")) {
+    try (DataOutputStream out = output(args[1], withAlpha ? ".rgba" : ".rgb")) {
       for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
           int rgb = image.getRGB(x, y);
           out.writeByte(rgb >>> 16);
           out.writeByte(rgb >>> 8);
           out.writeByte(rgb);
+          if (withAlpha) out.writeByte(rgb >>> 24);
         }
       }
     }

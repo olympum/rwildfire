@@ -40,9 +40,12 @@ fn run(
     let scene = parse(&fs::read_to_string(input)?)?;
     let width = scene.width.checked_mul(2).ok_or("image width overflow")?;
     let height = scene.height.checked_mul(2).ok_or("image height overflow")?;
-    let pixels = RenderRequest::new(width, height, quality, PREVIEW_SEED)
-        .resolve(&scene)?
-        .render()?;
+    let job = RenderRequest::new(width, height, quality, PREVIEW_SEED).resolve(&scene)?;
+    let (color, pixels) = if scene.bg_transparency {
+        (png::ColorType::Rgba, job.render_rgba()?)
+    } else {
+        (png::ColorType::Rgb, job.render()?)
+    };
     let mut png = png::Encoder::new(
         BufWriter::new(
             OpenOptions::new()
@@ -53,7 +56,7 @@ fn run(
         width as u32,
         height as u32,
     );
-    png.set_color(png::ColorType::Rgb);
+    png.set_color(color);
     png.set_depth(png::BitDepth::Eight);
     let mut writer = png.write_header()?;
     writer.write_image_data(&pixels)?;

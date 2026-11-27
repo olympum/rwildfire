@@ -16,7 +16,7 @@ The checkout is external. Nothing from upstream is vendored into this
 repository. `prepare` fetches the pinned commit into an ignored bare cache by
 default, or accepts an explicit clean checkout with `--source`.
 
-## Production CPU stills: whole-render-v5
+## Production CPU stills: whole-render-v6
 
 After preparing the pinned source, run `python3 tools/check_whole_render.py`
 (or append the path to a clean pinned checkout). The standard gate also runs it.
@@ -42,7 +42,10 @@ and exercises rounding up from a fractional sample budget. The 2×
 control: the entire raster must stay identical while reconstructed RGB changes. `tone-controls`
 compares the opaque-black output with nondefault contrast, vibrancy, and
 low-density brightness. Three Java controls reset one setting at a time;
-each must preserve the raw raster and change the decoded image.
+each must preserve the raw raster and change the decoded image. The
+`transparent-alpha` fixture compares decoded RGBA, including clear and
+semitransparent pixels. Resetting foreground opacity in Java must leave
+the raster and RGB unchanged while changing alpha.
 
 Artifacts, including PNGs, binary captures, per-process logs, and provenance with
 input and output hashes, are kept under the reported ignored artifact directory.
