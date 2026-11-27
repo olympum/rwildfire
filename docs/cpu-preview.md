@@ -63,8 +63,11 @@ and `vibrancy` (default 1, quantized and clamped by Java’s 256-step rule).
 These controls do not change the raw raster.
 
 `background="r g b"` sets one solid color (black by default). Values are
-scaled by 255, rounded, and clamped. Gradients and background images are
-not supported. `bg_transparency="1"` makes the CLI write a
+scaled by 255, rounded, and clamped. `background_type="GRADIENT_2X2"`
+interpolates `background_ul`, `background_ur`, `background_ll`, and
+`background_lr` in output-pixel coordinates. `GRADIENT_2X2_C` also uses
+`background_cc` and JWildfire’s quadrant split. Omitted colors are black.
+Background images are not supported. `bg_transparency="1"` makes the CLI write a
 straight-alpha RGBA PNG. `fg_opacity` defaults to 1 and changes alpha
 without premultiplying RGB. On a colored background, JWildfire adds the
 backdrop contribution to RGB even in RGBA output; fully empty pixels keep

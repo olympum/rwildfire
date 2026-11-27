@@ -68,14 +68,14 @@ def check(source):
     ], check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
-        "suite": "whole-render-v7", "upstream_commit": info["upstream_commit"],
+        "suite": "whole-render-v8", "upstream_commit": info["upstream_commit"],
         "source_tree": info["source_tree"], "source_digest_sha256": info["source_digest_sha256"],
         "java_version": jdk["java_version"], "javac_version": jdk["javac_version"],
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls", "transparent-alpha", "solid-background", "solid-background-rgba"):
+    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls", "transparent-alpha", "solid-background", "solid-background-rgba", "gradient-corners", "gradient-center"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
         layers = 3 if name == "layer-rounds" else 1
@@ -83,7 +83,7 @@ def check(source):
         record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers,
                   "oversample": oversample, "filter_radius": radius, "runs": {}}
 
-        channels = 4 if name in ("transparent-alpha", "solid-background-rgba") else 3
+        channels = 4 if name in ("transparent-alpha", "solid-background-rgba", "gradient-center") else 3
         pixel_format = "rgba" if channels == 4 else "rgb"
         record["pixel_format"] = pixel_format
         kernel = "MITCHELL_SINEPOW" if name in ("adaptive-mitchell", "tone-controls") else "MITCHELL_SMOOTH"
@@ -150,9 +150,15 @@ def check(source):
             if control[0] != a[0] or not same_rgb or not different:
                 raise oracle.OracleError(f"{name}: default opacity must change only alpha")
             print(f"{name}: default opacity preserves {bins:,} bins and RGB; changes {different:,} alpha values", flush=True)
-        if name.startswith("solid-background"):
+        if name.startswith(("solid-background", "gradient-")):
             black = work / f"{name}-black.flame"
-            black.write_text(scene.read_text(encoding="utf-8").replace('background="0.2 0.51 0.9"', 'background="0 0 0"'), encoding="utf-8")
+            source = scene.read_text(encoding="utf-8")
+            if name.startswith("gradient-"):
+                source = source.replace('background_type="GRADIENT_2X2_C"', 'background_type="SINGLE_COLOR"').replace(
+                    'background_type="GRADIENT_2X2"', 'background_type="SINGLE_COLOR"')
+            else:
+                source = source.replace('background="0.2 0.51 0.9"', 'background="0 0 0"')
+            black.write_text(source, encoding="utf-8")
             control = run("black-background", QUALITY, source_flame=black)
             record["runs"]["black-background"]["input_sha256"] = oracle.sha256_file(black)
             if control[0] != a[0] or control[1] == a[1]:

@@ -16,7 +16,7 @@ The checkout is external. Nothing from upstream is vendored into this
 repository. `prepare` fetches the pinned commit into an ignored bare cache by
 default, or accepts an explicit clean checkout with `--source`.
 
-## Production CPU stills: whole-render-v7
+## Production CPU stills: whole-render-v8
 
 After preparing the pinned source, run `python3 tools/check_whole_render.py`
 (or append the path to a clean pinned checkout). The standard gate also runs it.
@@ -48,6 +48,8 @@ semitransparent pixels. Resetting foreground opacity in Java must leave
 the raster and RGB unchanged while changing alpha. The two
 `solid-background` scenes compare RGB and RGBA with a colored backdrop.
 Black controls must preserve the raster (and RGBA alpha) while changing RGB.
+The gradient fixtures check four-corner RGB and center-point RGBA with the
+same black-background control.
 
 Artifacts, including PNGs, binary captures, per-process logs, and provenance with
 input and output hashes, are kept under the reported ignored artifact directory.
