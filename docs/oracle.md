@@ -16,7 +16,7 @@ The checkout is external. Nothing from upstream is vendored into this
 repository. `prepare` fetches the pinned commit into an ignored bare cache by
 default, or accepts an explicit clean checkout with `--source`.
 
-## Production CPU stills: whole-render-v4
+## Production CPU stills: whole-render-v5
 
 After preparing the pinned source, run `python3 tools/check_whole_render.py`
 (or append the path to a clean pinned checkout). The standard gate also runs it.
@@ -39,7 +39,10 @@ uses radius 1 with a 326×246 raster; oversample-3 uses radius 0 with a
 480×360 raster. The radius-1 oversample-3 fixture uses a 490×370 raster
 and exercises rounding up from a fractional sample budget. The 2×
 `adaptive-mitchell` fixture also compares with a fixed Mitchell Smooth Java
-control: the entire raster must stay identical while reconstructed RGB changes.
+control: the entire raster must stay identical while reconstructed RGB changes. `tone-controls`
+compares the opaque-black output with nondefault contrast, vibrancy, and
+low-density brightness. Three Java controls reset one setting at a time;
+each must preserve the raw raster and change the decoded image.
 
 Artifacts, including PNGs, binary captures, per-process logs, and provenance with
 input and output hashes, are kept under the reported ignored artifact directory.

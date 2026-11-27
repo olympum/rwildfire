@@ -825,12 +825,13 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
         ..
     } = settings;
     const WHITE_LEVEL: f64 = 220.0;
-    const LOW_DENSITY_BRIGHTNESS: f64 = 0.24;
     let area = (width * height) as f64 / (ppu * ppu);
-    let k1 = 2.0 * scene.brightness / oversample as f64;
-    let k2 = 1.0 / (area * quality as f64);
-    let glow = LOW_DENSITY_BRIGHTNESS * k2 * area / oversample as f64;
+    let k1 = scene.contrast * 2.0 * scene.brightness / oversample as f64;
+    let k2 = 1.0 / (scene.contrast * area * quality as f64);
+    let glow = scene.low_density_brightness * k2 * area / oversample as f64;
     let gamma = 1.0 / scene.gamma;
+    let vibrancy = (scene.vibrancy * 256.0 + 0.5).trunc().clamp(0.0, 256.0);
+    let inverse_vibrancy = 256.0 - vibrancy;
     let threshold = scene.threshold;
     let threshold_scale = threshold.powf(gamma - 1.0);
     let log_scale = |count: u32| {
@@ -929,8 +930,17 @@ fn shade(scene: &Scene, settings: StillSettings, raster: &[Bin], filter: &Kernel
             } else {
                 power
             };
-            let gamma_scale = 256.0 * alpha / intensity;
-            pixels.extend(rgb.map(|channel| (gamma_scale * channel.max(0.0) + 0.5) as u8));
+            let gamma_scale = vibrancy * alpha / intensity;
+            pixels.extend(rgb.map(|channel| {
+                let channel = channel.max(0.0);
+                let scaled = gamma_scale * channel;
+                let mixed = if inverse_vibrancy > 0.0 {
+                    scaled + inverse_vibrancy * channel.powf(gamma)
+                } else {
+                    scaled
+                };
+                (mixed + 0.5) as u8
+            }));
         }
     }
     pixels
