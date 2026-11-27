@@ -42,7 +42,7 @@ completes whole layer rounds, and flushes per-layer batches into a single raster
 in Java production order. Hidden layers are not supported. The `Sampler` trace
 API traces the first layer in isolation; use a render request for the full scene.
 
-The output size is twice the source size. The opaque-black renderer uses
+The output size is twice the source size. The CPU renderer uses
 JWildfire’s default Mitchell Smooth filter for color and Gaussian filter for
 intensity at legacy `filter="1.0"`. Radius 0 or a missing `filter` attribute
 keeps the prior unfiltered preview behavior; the missing-attribute case does
@@ -55,14 +55,20 @@ kernels and filter-indicator overlays are not supported. At radius 1,
 raster. It accepts `filter_type="ADAPTIVE"` (or omitted), `filter_sharpness`
 (default 4.0), and `filter_low_density` (default 0.025). It selects SinePow10
 for sparse or smooth areas and Mitchell Smooth for detail; empty selector bins
-use the primary filter. This does not change projection jitter. The opaque-black path accepts `contrast`
+use the primary filter. This does not change projection jitter.
+
+Tone controls include `contrast`
 (positive, default 1), `low_density_brightness` (nonnegative, default 0.24),
 and `vibrancy` (default 1, quantized and clamped by Java’s 256-step rule).
 These controls do not change the raw raster.
 
-With a black background, `bg_transparency="1"` makes the CLI write a
+`background="r g b"` sets one solid color (black by default). Values are
+scaled by 255, rounded, and clamped. Gradients and background images are
+not supported. `bg_transparency="1"` makes the CLI write a
 straight-alpha RGBA PNG. `fg_opacity` defaults to 1 and changes alpha
-without premultiplying RGB. Library callers can explicitly select RGB8
+without premultiplying RGB. On a colored background, JWildfire adds the
+backdrop contribution to RGB even in RGBA output; fully empty pixels keep
+the backdrop RGB and have alpha zero. Library callers can explicitly select RGB8
 with `ResolvedStill::render` or RGBA8 with `ResolvedStill::render_rgba`,
 regardless of the document’s PNG preference.
 

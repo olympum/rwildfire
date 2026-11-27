@@ -623,7 +623,7 @@ impl ResolvedStill<'_> {
         self.render_with_raster(|_| Ok(()))
     }
 
-    /// Return row-major transparent RGBA8 (unassociated alpha) over black.
+    /// Return row-major RGBA8 with the configured backdrop and unassociated alpha.
     pub fn render_rgba(&self) -> Result<Vec<u8>, String> {
         self.render_rgba_with_raster(|_| Ok(()))
     }
@@ -833,8 +833,7 @@ fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<Resolved
     })
 }
 
-// Opaque-black path of JWildfire's LogScaleCalculator,
-// LogDensityFilter and GammaCorrectionFilter, at the default color settings.
+// Non-solid path of JWildfire's LogScaleCalculator, LogDensityFilter and GammaCorrectionFilter.
 fn shade(
     scene: &Scene,
     settings: StillSettings,
@@ -955,7 +954,10 @@ fn shade(
                     .sum::<f64>()
             };
             if intensity <= 0.0 {
-                pixels.extend_from_slice(&[0; 4][..channels]);
+                pixels.extend(scene.background);
+                if with_alpha {
+                    pixels.push(0);
+                }
                 continue;
             }
             let power = intensity.powf(gamma);
@@ -966,18 +968,24 @@ fn shade(
                 power
             };
             let gamma_scale = vibrancy * alpha / intensity;
-            pixels.extend(rgb.map(|channel| {
-                let channel = channel.max(0.0);
-                let scaled = gamma_scale * channel;
-                let mixed = if inverse_vibrancy > 0.0 {
-                    scaled + inverse_vibrancy * channel.powf(gamma)
-                } else {
-                    scaled
-                };
-                (mixed + 0.5) as u8
-            }));
+            let alpha_byte = (alpha * 255.0 * alpha_scale + 0.5) as u8;
+            pixels.extend(
+                rgb.into_iter()
+                    .zip(scene.background)
+                    .map(|(channel, background)| {
+                        let channel = channel.max(0.0);
+                        let scaled = gamma_scale * channel;
+                        let mixed = if inverse_vibrancy > 0.0 {
+                            scaled + inverse_vibrancy * channel.powf(gamma)
+                        } else {
+                            scaled
+                        };
+                        let backdrop = (u16::from(255 - alpha_byte) * u16::from(background)) >> 8;
+                        ((mixed + 0.5) as u8).saturating_add(backdrop as u8)
+                    }),
+            );
             if with_alpha {
-                pixels.push((alpha * 255.0 * alpha_scale + 0.5) as u8);
+                pixels.push(alpha_byte);
             }
         }
     }

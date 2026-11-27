@@ -12,6 +12,7 @@ pub struct Scene {
     pub center: [f64; 2],
     pub brightness: f64,
     pub bg_transparency: bool,
+    pub background: [u8; 3],
     pub foreground_opacity: f64,
     pub contrast: f64,
     pub vibrancy: f64,
@@ -182,6 +183,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "filter_low_density",
             "quality",
             "background",
+            "background_type",
             "bg_transparency",
             "fg_opacity",
             "brightness",
@@ -211,9 +213,20 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     if number(n, "temporal_samples", 1.0)? != 1.0 {
         return Err("unsupported non-default temporal_samples".into());
     }
-    if n.attribute("background").is_some() && vector::<f64, 3>(n, "background")? != [0.; 3] {
-        return Err("only a black background is supported".into());
+    if n.attribute("background_type")
+        .is_some_and(|kind| kind != "SINGLE_COLOR")
+    {
+        return Err("only a solid background is supported".into());
     }
+    let background = if n.attribute("background").is_some() {
+        let channels = vector::<f64, 3>(n, "background")?;
+        if channels.iter().any(|value| !value.is_finite()) {
+            return Err("background channels must be finite".into());
+        }
+        channels.map(|value| (255.0 * value + 0.5) as u8)
+    } else {
+        [0; 3]
+    };
     let [width, height] = vector::<usize, 2>(n, "size")?;
     let center = vector::<f64, 2>(n, "center")?;
     let ppu = finite(&required(n, "scale")?, "scale")?;
@@ -307,6 +320,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         center,
         brightness,
         bg_transparency,
+        background,
         foreground_opacity,
         contrast,
         vibrancy,

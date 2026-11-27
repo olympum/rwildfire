@@ -68,14 +68,14 @@ def check(source):
     ], check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
-        "suite": "whole-render-v6", "upstream_commit": info["upstream_commit"],
+        "suite": "whole-render-v7", "upstream_commit": info["upstream_commit"],
         "source_tree": info["source_tree"], "source_digest_sha256": info["source_digest_sha256"],
         "java_version": jdk["java_version"], "javac_version": jdk["javac_version"],
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
         "width": WIDTH, "height": HEIGHT, "quality": QUALITY, "scenes": {},
     }
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
-    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls", "transparent-alpha"):
+    for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls", "transparent-alpha", "solid-background", "solid-background-rgba"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
     for name, scene in scenes.items():
         layers = 3 if name == "layer-rounds" else 1
@@ -83,7 +83,7 @@ def check(source):
         record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers,
                   "oversample": oversample, "filter_radius": radius, "runs": {}}
 
-        channels = 4 if name == "transparent-alpha" else 3
+        channels = 4 if name in ("transparent-alpha", "solid-background-rgba") else 3
         pixel_format = "rgba" if channels == 4 else "rgb"
         record["pixel_format"] = pixel_format
         kernel = "MITCHELL_SINEPOW" if name in ("adaptive-mitchell", "tone-controls") else "MITCHELL_SMOOTH"
@@ -140,7 +140,7 @@ def check(source):
                 different = sum(a[1][i:i + 3] != control[1][i:i + 3] for i in range(0, len(a[1]), 3))
                 record["runs"][f"default-{key}"]["input_sha256"] = oracle.sha256_file(control_flame)
                 print(f"{name}: default {key} preserves all {bins:,} bins and changes {different:,} RGB pixels", flush=True)
-        if channels == 4:
+        if name == "transparent-alpha":
             default = work / "default-opacity.flame"
             default.write_text(scene.read_text(encoding="utf-8").replace(' fg_opacity="0.62"', ""), encoding="utf-8")
             control = run("default-opacity", QUALITY, source_flame=default)
@@ -150,6 +150,16 @@ def check(source):
             if control[0] != a[0] or not same_rgb or not different:
                 raise oracle.OracleError(f"{name}: default opacity must change only alpha")
             print(f"{name}: default opacity preserves {bins:,} bins and RGB; changes {different:,} alpha values", flush=True)
+        if name.startswith("solid-background"):
+            black = work / f"{name}-black.flame"
+            black.write_text(scene.read_text(encoding="utf-8").replace('background="0.2 0.51 0.9"', 'background="0 0 0"'), encoding="utf-8")
+            control = run("black-background", QUALITY, source_flame=black)
+            record["runs"]["black-background"]["input_sha256"] = oracle.sha256_file(black)
+            if control[0] != a[0] or control[1] == a[1]:
+                raise oracle.OracleError(f"{name}: black control must preserve bins and change RGB")
+            if channels == 4 and control[1][3::4] != a[1][3::4]:
+                raise oracle.OracleError(f"{name}: black control changed alpha")
+            print(f"{name}: black control preserves all {bins:,} bins and changes RGB", flush=True)
         changed = run("budget-control", QUALITY + 1)
         if changed[0] == a[0] or changed[2] <= a[2]:
             raise oracle.OracleError(f"{name}: extra sample budget did not increase raster hits")
