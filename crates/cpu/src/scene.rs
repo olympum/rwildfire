@@ -13,6 +13,7 @@ pub struct Scene {
     pub brightness: f64,
     pub bg_transparency: bool,
     pub background: [u8; 3],
+    pub(crate) gradient: Option<Gradient>,
     pub foreground_opacity: f64,
     pub contrast: f64,
     pub vibrancy: f64,
@@ -29,6 +30,11 @@ pub struct Scene {
 pub(crate) struct AdaptiveFilter {
     pub(crate) sharpness: f64,
     pub(crate) low_density: f64,
+}
+
+pub(crate) struct Gradient {
+    pub(crate) corners: [[u8; 3]; 4],
+    pub(crate) center: Option<[u8; 3]>,
 }
 
 pub struct Layer {
@@ -184,6 +190,11 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "quality",
             "background",
             "background_type",
+            "background_ul",
+            "background_ur",
+            "background_ll",
+            "background_lr",
+            "background_cc",
             "bg_transparency",
             "fg_opacity",
             "brightness",
@@ -213,19 +224,23 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
     if number(n, "temporal_samples", 1.0)? != 1.0 {
         return Err("unsupported non-default temporal_samples".into());
     }
-    if n.attribute("background_type")
-        .is_some_and(|kind| kind != "SINGLE_COLOR")
-    {
-        return Err("only a solid background is supported".into());
-    }
-    let background = if n.attribute("background").is_some() {
-        let channels = vector::<f64, 3>(n, "background")?;
-        if channels.iter().any(|value| !value.is_finite()) {
-            return Err("background channels must be finite".into());
-        }
-        channels.map(|value| (255.0 * value + 0.5) as u8)
-    } else {
-        [0; 3]
+    let background = read_background_color(n, "background")?;
+    let gradient = match n.attribute("background_type") {
+        None | Some("SINGLE_COLOR") => None,
+        Some(kind @ ("GRADIENT_2X2" | "GRADIENT_2X2_C")) => Some(Gradient {
+            corners: [
+                read_background_color(n, "background_ul")?,
+                read_background_color(n, "background_ur")?,
+                read_background_color(n, "background_ll")?,
+                read_background_color(n, "background_lr")?,
+            ],
+            center: if kind == "GRADIENT_2X2_C" {
+                Some(read_background_color(n, "background_cc")?)
+            } else {
+                None
+            },
+        }),
+        _ => return Err("unsupported background_type".into()),
     };
     let [width, height] = vector::<usize, 2>(n, "size")?;
     let center = vector::<f64, 2>(n, "center")?;
@@ -321,6 +336,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         brightness,
         bg_transparency,
         background,
+        gradient,
         foreground_opacity,
         contrast,
         vibrancy,
@@ -332,6 +348,17 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         oversample,
         layers,
     })
+}
+
+fn read_background_color(n: Element<'_, '_>, key: &str) -> Result<[u8; 3], String> {
+    if n.attribute(key).is_none() {
+        return Ok([0; 3]);
+    }
+    let channels = vector::<f64, 3>(n, key)?;
+    if channels.iter().any(|value| !value.is_finite()) {
+        return Err(format!("{key} channels must be finite"));
+    }
+    Ok(channels.map(|value| (255.0 * value + 0.5) as u8))
 }
 
 fn read_layer(n: Element<'_, '_>, weight: f64, density: f64) -> Result<Layer, String> {

@@ -953,8 +953,9 @@ fn shade(
                     })
                     .sum::<f64>()
             };
+            let background = background_at(scene, x, y, width, height);
             if intensity <= 0.0 {
-                pixels.extend(scene.background);
+                pixels.extend(background);
                 if with_alpha {
                     pixels.push(0);
                 }
@@ -971,7 +972,7 @@ fn shade(
             let alpha_byte = (alpha * 255.0 * alpha_scale + 0.5) as u8;
             pixels.extend(
                 rgb.into_iter()
-                    .zip(scene.background)
+                    .zip(background)
                     .map(|(channel, background)| {
                         let channel = channel.max(0.0);
                         let scaled = gamma_scale * channel;
@@ -990,6 +991,42 @@ fn shade(
         }
     }
     pixels
+}
+
+// JWildfire LogDensityFilter.calculateBGColor, evaluated in output-pixel coordinates.
+fn background_at(scene: &Scene, x: usize, y: usize, width: usize, height: usize) -> [u8; 3] {
+    let Some(gradient) = &scene.gradient else {
+        return scene.background;
+    };
+    let lerp = |s: f64, e, t| s + (e - s) * t;
+    let bilerp = |[ul, ur, ll, lr]: [f64; 4], x, y| lerp(lerp(ul, ur, x), lerp(ll, lr, x), y);
+    if let Some(center) = gradient.center {
+        // Java splits at floor(size / 2) - 1; the far edge may extrapolate.
+        let split_x = (width / 2) as f64 - 1.0;
+        let split_y = (height / 2) as f64 - 1.0;
+        let (x, y) = (x as f64, y as f64);
+        let left = x <= split_x;
+        let top = y <= split_y;
+        let tx = if left { x } else { x - split_x } / split_x;
+        let ty = if top { y } else { y - split_y } / split_y;
+        std::array::from_fn(|i| {
+            let [ul, ur, ll, lr] = gradient.corners.map(|c| f64::from(c[i]));
+            let cc = f64::from(center[i]);
+            let corners = match (left, top) {
+                (true, true) => [ul, lerp(ul, ur, 0.5), lerp(ll, ul, 0.5), cc],
+                (true, false) => [lerp(ul, ll, 0.5), cc, ll, lerp(ll, lr, 0.5)],
+                (false, true) => [lerp(ul, ur, 0.5), ur, cc, lerp(ur, lr, 0.5)],
+                (false, false) => [cc, lerp(ur, lr, 0.5), lerp(ll, lr, 0.5), lr],
+            };
+            (bilerp(corners, tx, ty) + 0.5) as u8
+        })
+    } else {
+        let tx = x as f64 / (width - 1) as f64;
+        let ty = y as f64 / (height - 1) as f64;
+        std::array::from_fn(|i| {
+            (bilerp(gradient.corners.map(|c| f64::from(c[i])), tx, ty) + 0.5) as u8
+        })
+    }
 }
 
 fn scharr_log(raster: &[Bin], w: usize, h: usize, x: usize, y: usize) -> f64 {
