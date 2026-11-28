@@ -16,7 +16,7 @@ The checkout is external. Nothing from upstream is vendored into this
 repository. `prepare` fetches the pinned commit into an ignored bare cache by
 default, or accepts an explicit clean checkout with `--source`.
 
-## Production CPU stills: whole-render-v8
+## Production CPU stills: whole-render-v9
 
 After preparing the pinned source, run `python3 tools/check_whole_render.py`
 (or append the path to a clean pinned checkout). The standard gate also runs it.
@@ -49,7 +49,9 @@ the raster and RGB unchanged while changing alpha. The two
 `solid-background` scenes compare RGB and RGBA with a colored backdrop.
 Black controls must preserve the raster (and RGBA alpha) while changing RGB.
 The gradient fixtures check four-corner RGB and center-point RGBA with the
-same black-background control.
+same black-background control. Generated RGB8 PNG fixtures cover native-sized
+and bilinearly resized image backgrounds. Removing the image must change RGB
+without changing the raster or alpha. The provenance records each PNG hash.
 
 Artifacts, including PNGs, binary captures, per-process logs, and provenance with
 input and output hashes, are kept under the reported ignored artifact directory.

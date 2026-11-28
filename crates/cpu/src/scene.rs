@@ -13,6 +13,8 @@ pub struct Scene {
     pub brightness: f64,
     pub bg_transparency: bool,
     pub background: [u8; 3],
+    pub(crate) background_image_path: Option<String>,
+    pub(crate) background_image: Option<crate::BackdropImage>,
     pub(crate) gradient: Option<Gradient>,
     pub foreground_opacity: f64,
     pub contrast: f64,
@@ -163,6 +165,17 @@ fn child_elements<'a, 'i>(n: Element<'a, 'i>) -> Result<Vec<Element<'a, 'i>>, St
     Ok(elements)
 }
 
+impl Scene {
+    pub fn background_image_path(&self) -> Option<&str> {
+        self.background_image_path.as_deref()
+    }
+
+    /// Bind a decoded backdrop supplied by the caller, without performing I/O.
+    pub fn bind_background_image(&mut self, image: crate::BackdropImage) {
+        self.background_image = Some(image);
+    }
+}
+
 pub fn parse(xml: &str) -> Result<Scene, String> {
     let doc = Document::parse(xml).map_err(|err| err.to_string())?;
     let n = doc.root_element();
@@ -189,6 +202,7 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
             "filter_low_density",
             "quality",
             "background",
+            "background_image",
             "background_type",
             "background_ul",
             "background_ur",
@@ -336,6 +350,11 @@ pub fn parse(xml: &str) -> Result<Scene, String> {
         brightness,
         bg_transparency,
         background,
+        background_image_path: n
+            .attribute("background_image")
+            .filter(|v| !v.is_empty())
+            .map(str::to_owned),
+        background_image: None,
         gradient,
         foreground_opacity,
         contrast,

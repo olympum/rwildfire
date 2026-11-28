@@ -773,6 +773,9 @@ pub fn render_quality_500_with_raster(
 }
 
 fn resolve(scene: &Scene, request: RenderRequest, cap: usize) -> Result<ResolvedStill<'_>, String> {
+    if scene.background_image_path().is_some() && scene.background_image.is_none() {
+        return Err("background image asset is not bound".into());
+    }
     let RenderRequest {
         width,
         height,
@@ -995,6 +998,9 @@ fn shade(
 
 // JWildfire LogDensityFilter.calculateBGColor, evaluated in output-pixel coordinates.
 fn background_at(scene: &Scene, x: usize, y: usize, width: usize, height: usize) -> [u8; 3] {
+    if let Some(image) = &scene.background_image {
+        return image.sample(x, y, width, height);
+    }
     let Some(gradient) = &scene.gradient else {
         return scene.background;
     };

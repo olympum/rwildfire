@@ -1,4 +1,6 @@
 mod angle_reduce;
+pub mod backdrop;
+pub use backdrop::BackdropImage;
 mod fast_atan;
 mod fast_pow;
 mod fast_sin;

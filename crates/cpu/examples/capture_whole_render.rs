@@ -1,4 +1,4 @@
-use rwildfire_cpu::{scene::parse, Antialias, RenderRequest};
+use rwildfire_cpu::{backdrop::load_scene_file, Antialias, RenderRequest};
 use std::{
     error::Error,
     fs,
@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let [flame, prefix, width, height, quality, seed, amount, radius] = args.as_slice() else {
         return Err("expected FLAME PREFIX WIDTH HEIGHT QUALITY SEED AMOUNT RADIUS".into());
     };
-    let scene = parse(&fs::read_to_string(flame)?)?;
+    let scene = load_scene_file(Path::new(flame))?;
     let mut request = RenderRequest::new(
         width.parse()?,
         height.parse()?,

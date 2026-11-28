@@ -1,10 +1,5 @@
-use rwildfire_cpu::{scene::parse, RenderRequest, PREVIEW_SEED};
-use std::{
-    env,
-    fs::{self, OpenOptions},
-    io::BufWriter,
-    process::ExitCode,
-};
+use rwildfire_cpu::{backdrop::load_scene_file, RenderRequest, PREVIEW_SEED};
+use std::{env, fs::OpenOptions, io::BufWriter, process::ExitCode};
 
 const USAGE: &str = "Usage: rwildfire-cpu INPUT.flame OUTPUT.png [SAMPLES_PER_PIXEL]\nSingle-thread CPU preview. Writes a new PNG at twice the scene size. Default: 100 samples/pixel.";
 
@@ -37,7 +32,7 @@ fn run(
     output: &std::ffi::OsStr,
     quality: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let scene = parse(&fs::read_to_string(input)?)?;
+    let scene = load_scene_file(std::path::Path::new(input))?;
     let width = scene.width.checked_mul(2).ok_or("image width overflow")?;
     let height = scene.height.checked_mul(2).ok_or("image height overflow")?;
     let job = RenderRequest::new(width, height, quality, PREVIEW_SEED).resolve(&scene)?;
