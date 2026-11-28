@@ -67,7 +67,11 @@ scaled by 255, rounded, and clamped. `background_type="GRADIENT_2X2"`
 interpolates `background_ul`, `background_ur`, `background_ll`, and
 `background_lr` in output-pixel coordinates. `GRADIENT_2X2_C` also uses
 `background_cc` and JWildfire’s quadrant split. Omitted colors are black.
-Background images are not supported. `bg_transparency="1"` makes the CLI write a
+`background_image` overrides the solid color or gradient with a local opaque
+RGB8 PNG (each axis 2–4096 pixels; no animation). The CLI resolves relative
+paths beside the flame file and reports missing or unsupported assets. Library
+callers using XML-only parsing bind an image before resolving a render.
+`bg_transparency="1"` makes the CLI write a
 straight-alpha RGBA PNG. `fg_opacity` defaults to 1 and changes alpha
 without premultiplying RGB. On a colored background, JWildfire adds the
 backdrop contribution to RGB even in RGBA output; fully empty pixels keep

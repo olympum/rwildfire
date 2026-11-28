@@ -8,6 +8,7 @@ from pathlib import Path
 import struct
 import subprocess
 import tempfile
+import zlib
 
 import oracle
 
@@ -50,6 +51,17 @@ def compare(reference, candidate, label, channels=3):
             raise oracle.OracleError(f"{label}: {description} mismatch at ({x}, {y})")
 
 
+def write_backdrop(path, width, height):
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    rows = b"".join(b"\0" + bytes(c for x in range(width) for c in (
+        (17 + 41 * x + 13 * y) % 256, (53 + 5 * x + 29 * y) % 256, (191 + 11 * x + 37 * y) % 256,
+    )) for y in range(height))
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
 def check(source):
     info = oracle.resolve_source(source)
     export = oracle.CACHE / info["export"]
@@ -68,7 +80,7 @@ def check(source):
     ], check=True, timeout=600)
     runtime_cp = os.pathsep.join((str(classes), str(export / "src"), str(export / "resources"), cp))
     provenance = {
-        "suite": "whole-render-v8", "upstream_commit": info["upstream_commit"],
+        "suite": "whole-render-v9", "upstream_commit": info["upstream_commit"],
         "source_tree": info["source_tree"], "source_digest_sha256": info["source_digest_sha256"],
         "java_version": jdk["java_version"], "javac_version": jdk["javac_version"],
         "probe_sha256": oracle.sha256_file(probe), "workers": 1, "seed": SEED,
@@ -77,13 +89,23 @@ def check(source):
     scenes = {name: export / "resources/flames" / (name + ".flame") for name in SCENES}
     for name in ("chaos-transitions", "post-affine", "final-chain", "layer-rounds", "oversample-2", "oversample-3", "oversample-3-filtered", "adaptive-mitchell", "tone-controls", "transparent-alpha", "solid-background", "solid-background-rgba", "gradient-corners", "gradient-center"):
         scenes[name] = oracle.ROOT / "fixtures" / (name + ".flame")
+    for name, dimensions in (("image-backdrop-scaled", (7, 5)), ("image-backdrop-native", (WIDTH, HEIGHT))):
+        directory = work / name
+        directory.mkdir()
+        scene = directory / "input.flame"
+        scene.write_bytes((oracle.ROOT / "fixtures/image-backdrop.flame").read_bytes())
+        write_backdrop(directory / "backdrop.png", *dimensions)
+        scenes[name] = scene
     for name, scene in scenes.items():
         layers = 3 if name == "layer-rounds" else 1
         oversample, radius = {"oversample-2": (2, 1), "oversample-3": (3, 0), "oversample-3-filtered": (3, 1), "adaptive-mitchell": (2, 1), "tone-controls": (2, 1)}.get(name, (1, 1))
         record = {"input_sha256": oracle.sha256_file(scene), "layer_count": layers,
                   "oversample": oversample, "filter_radius": radius, "runs": {}}
 
-        channels = 4 if name in ("transparent-alpha", "solid-background-rgba", "gradient-center") else 3
+        image_backdrop = name.startswith("image-backdrop-")
+        channels = 4 if image_backdrop or name in ("transparent-alpha", "solid-background-rgba", "gradient-center") else 3
+        if image_backdrop:
+            record["background_png_sha256"] = oracle.sha256_file(scene.parent / "backdrop.png")
         pixel_format = "rgba" if channels == 4 else "rgb"
         record["pixel_format"] = pixel_format
         kernel = "MITCHELL_SINEPOW" if name in ("adaptive-mitchell", "tone-controls") else "MITCHELL_SMOOTH"
@@ -99,7 +121,7 @@ def check(source):
                     "-cp", runtime_cp, "WholeRenderProbe", str(source_flame), str(prefix),
                     str(WIDTH), str(HEIGHT), str(quality), str(SEED), str(amount), str(AA_RADIUS),
                     str(layers), str(oversample), str(radius), expected_kernel, str(channels == 4).lower(),
-                ], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
+                ], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120, cwd=source_flame.parent if image_backdrop else None)
             raster, rgb, hits, budget = read_capture(prefix, quality, layers, oversample, radius, channels)
             record["runs"][label] = {
                 "quality": quality, "hits": hits, "sample_budget": budget,
@@ -150,6 +172,14 @@ def check(source):
             if control[0] != a[0] or not same_rgb or not different:
                 raise oracle.OracleError(f"{name}: default opacity must change only alpha")
             print(f"{name}: default opacity preserves {bins:,} bins and RGB; changes {different:,} alpha values", flush=True)
+        if image_backdrop:
+            control_flame = scene.parent / "without-image.flame"
+            control_flame.write_text(scene.read_text(encoding="utf-8").replace(' background_image="backdrop.png"', ""), encoding="utf-8")
+            control = run("without-image", QUALITY, source_flame=control_flame)
+            record["runs"]["without-image"]["input_sha256"] = oracle.sha256_file(control_flame)
+            if control[0] != a[0] or control[1][3::4] != a[1][3::4] or control[1] == a[1]:
+                raise oracle.OracleError(f"{name}: removing the image must change only RGB")
+            print(f"{name}: removing the image changes RGB but preserves all {bins:,} bins and alpha", flush=True)
         if name.startswith(("solid-background", "gradient-")):
             black = work / f"{name}-black.flame"
             source = scene.read_text(encoding="utf-8")
